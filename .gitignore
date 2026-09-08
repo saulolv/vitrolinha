@@ -1,0 +1,23 @@
+# Zephyr / west workspace (topologia T2: este repo é o manifesto)
+build*/
+.west/
+zephyr/
+modules/
+bootloader/
+tools/
+twister-out*/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Sistema
+.DS_Store
+Thumbs.db
