@@ -1,0 +1,9 @@
+tests:
+  vitrolinha.track:
+    tags:
+      - vitrolinha
+      - track
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim

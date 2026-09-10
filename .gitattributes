@@ -1,0 +1,15 @@
+# Tudo em LF no repositório e na cópia de trabalho.
+#
+# Não é preferência de estilo: os scripts de bancada e o Dockerfile são
+# executados dentro de um contêiner Linux. Com o `core.autocrlf` padrão do
+# Git para Windows, um clone novo entregaria os .sh com CRLF e o contêiner
+# responderia `bad interpreter: /usr/bin/env bash^M` — o que quebraria o
+# "roda numa máquina limpa seguindo só o README".
+* text=auto eol=lf
+
+# Binários, para o Git não tentar normalizar.
+*.pdf binary
+*.png binary
+*.uf2 binary
+*.hex binary
+*.elf binary

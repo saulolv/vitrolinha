@@ -13,12 +13,77 @@ Trabalho da disciplina de Projetos de Sistemas Embarcados.
 
 ## Compilar
 
-```
-west build -b zbook@p2/rp2350b/m33
+O caminho padrão é por contêiner: fixa as versões do Zephyr e do SDK para todo
+mundo e não exige instalar nada além do Docker. Ver
+[ADR 0004](docs/adr/0004-ambiente-de-compilacao-em-docker.md).
+
+```bash
+scripts/setup.sh     # imagem + workspace west. Demora na primeira vez
+scripts/build.sh     # firmware -> build-out/zephyr.uf2
+scripts/test.sh      # testes unitários + cobertura
 ```
 
-**O sufixo `@p2` é obrigatório.** Sem ele o build recai na revisão P1 da placa,
-que não tem encoder nem display — e não emite erro nenhum.
+No Windows, rode pelo **Git Bash**. O `scripts/setup.sh` é idempotente: rodar de
+novo só atualiza o que mudou.
+
+Para gravar, conecte a placa pela USB com o BOOTSEL pressionado e copie
+`build-out/zephyr.uf2` para o disco que aparecer.
+
+### Sem contêiner
+
+Se você já tem um workspace Zephyr montado, o repositório é o próprio manifesto
+west (topologia T2):
+
+```bash
+west init -m https://github.com/saulolv/vitrolinha.git vitrolinha-ws
+cd vitrolinha-ws
+west update
+west build -b zbook@p2/rp2350b/m33 vitrolinha
+```
+
+**O sufixo `@p2` é obrigatório.** Sem ele o build recairia na revisão P1 da
+placa, que não tem encoder nem display. O projeto recusa esse alvo em três
+pontos — `CMakeLists.txt`, `src/main.c` e o próprio `app.overlay` — porque o
+Zephyr sozinho não recusaria, e o binário errado sairia sem aviso.
+
+### Comandos avulsos no contêiner
+
+```bash
+scripts/zephyr.sh west boards | grep zbook
+scripts/zephyr.sh bash            # sessão interativa no workspace
+```
+
+## Testes
+
+Os módulos rodam em `native_sim` sob `ztest`, compilados a partir da mesma lista
+de fontes que vai para a placa (`lib/CMakeLists.txt`).
+
+```bash
+scripts/test.sh                # com cobertura e portão
+scripts/test.sh --no-coverage  # só os testes
+```
+
+A meta é **100% de linhas e de ramos** nos módulos. `scripts/coverage_gate.py`
+reprova a execução se houver lacuna. Ramos que o ambiente de teste
+comprovadamente não consegue exercitar ficam em
+[`tests/coverage-exclusions.json`](tests/coverage-exclusions.json), cada um com a
+justificativa — e o portão também reprova exclusão que deixou de ser necessária,
+para que a lista não vire depósito.
+
+Relatório navegável em `build-out/coverage/index.html`.
+
+## Organização do repositório
+
+| Caminho | O que é |
+|---|---|
+| `west.yml` | Manifesto west. Zephyr fixado em v4.4.2, placa fora da árvore |
+| `prj.conf`, `app.overlay` | Configuração e sobreposição de devicetree da aplicação |
+| `include/vitrolinha/` | Contratos compartilhados pelas três trilhas |
+| `lib/` | Implementação dos módulos. Única lista de fontes do projeto |
+| `src/main.c` | Ponto de entrada. Na E0, pisca um LED e reporta os contratos |
+| `tests/` | Um diretório por módulo, em `ztest` sobre `native_sim` |
+| `scripts/` | Bancada: imagem, workspace, build, testes, portão de cobertura |
+| `docker/` | Imagem enxuta de compilação |
 
 ## Documentos
 
@@ -26,16 +91,18 @@ que não tem encoder nem display — e não emite erro nenhum.
 |---|---|
 | [`docs/especificacao-vitrolinha.md`](docs/especificacao-vitrolinha.md) | Especificação v3: requisitos, arquitetura, métricas, plano de entregas |
 | [`CLAUDE.md`](CLAUDE.md) | Plano de trabalho: pinos verificados, Kconfig, overlay, armadilhas, restrições de código |
+| [`CONTEXT.md`](CONTEXT.md) | Glossário do domínio. O mesmo termo com o mesmo sentido em código, issues e relatório |
+| [`docs/adr/`](docs/adr/) | Decisões de arquitetura, com as alternativas rejeitadas |
 
-Leia o `CLAUDE.md` antes de escrever a primeira linha. Ele lista três
+Leia o `CLAUDE.md` antes de escrever a primeira linha. Ele lista as
 configurações que, se omitidas, quebram o projeto **em silêncio**.
 
 ## Como o trabalho está dividido
 
 Três trilhas paralelas, costuradas por quatro contratos congelados antes da
 divisão. Com os contratos no lugar, cada trilha roda isolada: a A toca uma
-constante compilada no binário, a B lista um vetor fixo, a C imprime a biblioteca
-no log.
+faixa embutida no binário, a B lista o que o `storage` devolver, a C substitui
+a implementação de mentira pela do cartão sem tocar em ninguém.
 
 | Trilha | Escopo | Rótulo |
 |---|---|---|
@@ -45,5 +112,12 @@ no log.
 
 Os contratos estão nas issues com o rótulo `contrato` e são **pré-requisito de
 todas as outras**. A etapa E0 também bloqueia todo mundo.
+
+| Contrato | Cabeçalho |
+|---|---|
+| Metadados de faixa | [`include/vitrolinha/track.h`](include/vitrolinha/track.h) |
+| Comandos de transporte | [`include/vitrolinha/cmd.h`](include/vitrolinha/cmd.h) |
+| Instantâneo do player | [`include/vitrolinha/snapshot.h`](include/vitrolinha/snapshot.h) |
+| Biblioteca e carga | [`include/vitrolinha/storage.h`](include/vitrolinha/storage.h) |
 
 As etapas E0 a E7 estão como marcos. E0 a E5 são o produto mínimo viável.

@@ -1,0 +1,7 @@
+{
+  "// leia-me": "Ramos que os testes comprovadamente nao conseguem exercitar no ambiente de execucao, com a razao de cada um. Lido por scripts/coverage_gate.py. Toda entrada aqui e uma lacuna assumida por escrito: se o ramo passar a ser coberto, o portao reprova ate a entrada ser removida.",
+
+  "lib/snapshot.c": {
+    "47": "Aresta de repeticao do laco de leitura. So e tomada se uma publicacao acontecer entre seqlock_read_begin e seqlock_read_retry, isto e, se uma interrupcao preemptar o leitor no meio da copia. Em native_sim o relogio simulado so avanca quando a CPU fica ociosa, entao nenhuma interrupcao ocorre durante a copia e a condicao nunca da verdadeira. A logica de repeticao em si e coberta de forma deterministica em tests/seqlock (test_escrita_completa_invalida_leitura_em_curso e test_leitura_iniciada_no_meio_da_escrita_repete)."
+  }
+}

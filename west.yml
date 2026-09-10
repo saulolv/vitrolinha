@@ -1,0 +1,55 @@
+# Manifesto west do Vitrolinha (topologia T2: este repositório é o manifesto).
+#
+# Layout resultante do workspace:
+#
+#   vitrolinha-ws/          <- topdir do west
+#   ├── .west/
+#   ├── vitrolinha/         <- este repositório
+#   ├── zephyr/
+#   └── modules/
+#
+# Montagem numa máquina limpa: ver README.md.
+
+manifest:
+  self:
+    path: vitrolinha
+
+  remotes:
+    - name: upstream
+      url-base: https://github.com/zephyrproject-rtos
+    - name: zephyr-book
+      url-base: https://github.com/zephyr-book
+
+  projects:
+    # Revisão fixada numa tag, não em `main`: o mesmo commit deste repositório
+    # tem de reproduzir o mesmo binário daqui a seis meses.
+    - name: zephyr
+      remote: upstream
+      revision: v4.4.2
+      import:
+        # Sem a lista, o `west update` baixa ~90 módulos (vários GB). Aqui
+        # ficam só os que este alvo realmente usa.
+        name-allowlist:
+          # HAL do RP2350B. `CONFIG_PWM_RPI_PICO` faz `select PICOSDK_USE_PWM`,
+          # que vem daqui.
+          - hal_rpi_pico
+          # CMSIS 6 é o que `modules/cmsis_6/CMakeLists.txt` compila para
+          # `CONFIG_CPU_CORTEX_M`; o módulo `cmsis` (5) só atende Cortex-A/R.
+          - cmsis_6
+          # Biblioteca C padrão do Zephyr 4.x.
+          - picolibc
+          # Interface gráfica no OLED.
+          - lvgl
+          # Obrigatório mesmo sem cartão: o defconfig da placa liga
+          # CONFIG_FAT_FILESYSTEM_ELM incondicionalmente.
+          - fatfs
+          # Referenciado pelo nó `zephyr,fstab` da placa.
+          - littlefs
+
+    # Placa fora da árvore. O `zephyr/module.yml` dela define board_root e
+    # snippet_root, então o alvo zbook@p2/rp2350b/m33 é descoberto sozinho —
+    # não é preciso passar BOARD_ROOT.
+    - name: zbook
+      remote: zephyr-book
+      revision: main
+      path: modules/boards/zbook

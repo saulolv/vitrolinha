@@ -1,0 +1,109 @@
+name: CI
+
+# Com três trilhas em paralelo, a integração quebra em silêncio se ninguém
+# compila o conjunto. Este workflow é o que transforma "funciona na minha
+# branch" em fato verificável antes da revisão.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Um push novo na mesma branch cancela a execução anterior: o que interessa é
+# o estado atual da branch, não a fila histórica.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    name: Firmware (zbook@p2)
+    runs-on: ubuntu-latest
+    container:
+      image: zephyrprojectrtos/ci:v0.29.3
+    env:
+      ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+      CMAKE_PREFIX_PATH: /opt/toolchains
+
+    steps:
+      - name: Obter o repositório
+        uses: actions/checkout@v4
+        with:
+          # O west.yml declara self.path como "vitrolinha": o repositório tem
+          # de aparecer com esse nome, e o topdir passa a ser o diretório que
+          # o contém.
+          path: vitrolinha
+
+      - uses: ./vitrolinha/.github/actions/setup-west
+
+      - name: Compilar
+        run: west build -b zbook@p2/rp2350b/m33 -d build vitrolinha
+
+      - name: Verificar que o alvo sem @p2 é recusado
+        # Regressão da armadilha central do projeto: sem o sufixo, o build
+        # recai na revisão P1, que não tem encoder nem display. A trava tem de
+        # continuar reprovando esse alvo — se um dia ela parar de reprovar,
+        # é aqui que se descobre.
+        run: |
+          if west build -b zbook/rp2350b/m33 -d build-p1 vitrolinha > p1.log 2>&1; then
+            echo "FALHA: o alvo P1 compilou. A trava de revisão parou de funcionar."
+            exit 1
+          fi
+          grep -q "Alvo inválido" p1.log || {
+            echo "FALHA: o alvo P1 foi recusado, mas por outro motivo:"
+            cat p1.log
+            exit 1
+          }
+          echo "OK: alvo P1 recusado pela trava de revisão."
+
+      - name: Publicar os artefatos
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-zbook-p2
+          path: |
+            build/zephyr/zephyr.uf2
+            build/zephyr/zephyr.hex
+            build/zephyr/zephyr.elf
+          if-no-files-found: error
+
+  tests:
+    name: Testes e cobertura
+    runs-on: ubuntu-latest
+    container:
+      image: zephyrprojectrtos/ci:v0.29.3
+    env:
+      ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+      CMAKE_PREFIX_PATH: /opt/toolchains
+
+    steps:
+      - name: Obter o repositório
+        uses: actions/checkout@v4
+        with:
+          path: vitrolinha
+
+      - uses: ./vitrolinha/.github/actions/setup-west
+
+      - name: Rodar os testes com cobertura
+        run: |
+          west twister \
+            -p native_sim \
+            -T vitrolinha/tests \
+            --outdir twister-out \
+            --inline-logs \
+            --coverage \
+            --coverage-tool gcovr \
+            --coverage-basedir vitrolinha
+
+      - name: Exigir cobertura total
+        # A meta é 100% de linhas e de ramos. Ramos que o ambiente de teste
+        # não consegue exercitar ficam em tests/coverage-exclusions.json, cada
+        # um com a justificativa; qualquer lacuna nova reprova aqui.
+        run: python3 vitrolinha/scripts/coverage_gate.py twister-out/coverage.json
+
+      - name: Publicar o relatório de cobertura
+        # Também quando os testes falham: é aí que o relatório mais serve.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura
+          path: twister-out/coverage
+          if-no-files-found: warn

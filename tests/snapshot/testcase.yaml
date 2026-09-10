@@ -1,0 +1,9 @@
+tests:
+  vitrolinha.snapshot:
+    tags:
+      - vitrolinha
+      - snapshot
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim

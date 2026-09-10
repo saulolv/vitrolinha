@@ -1,0 +1,38 @@
+name: Preparar o workspace west
+description: >
+  Monta o workspace west em topologia T2 com este repositório como manifesto,
+  reaproveitando o Zephyr e os módulos do cache entre execuções. Usada pelos
+  dois jobs do CI, para que exista uma só definição de como o workspace é
+  montado.
+
+runs:
+  using: composite
+  steps:
+    - name: Liberar os diretórios para o git do contêiner
+      shell: bash
+      # O checkout roda com um usuário e o contêiner com outro; sem isto o
+      # git recusa operar nos repositórios e o west update falha.
+      run: git config --global --add safe.directory '*'
+
+    - name: Restaurar o cache do workspace
+      uses: actions/cache@v4
+      with:
+        path: |
+          .west
+          zephyr
+          modules
+        # A chave depende do manifesto: mudou a lista de módulos ou a versão
+        # do Zephyr, o cache é descartado. O restore-keys aproveita o cache
+        # anterior como ponto de partida, já que o west update sabe atualizar
+        # o que está desatualizado.
+        key: west-${{ runner.os }}-${{ hashFiles('vitrolinha/west.yml') }}
+        restore-keys: |
+          west-${{ runner.os }}-
+
+    - name: Inicializar e atualizar o workspace
+      shell: bash
+      run: |
+        if [ ! -d .west ]; then
+          west init -l vitrolinha
+        fi
+        west update --narrow --fetch-opt=--depth=1
