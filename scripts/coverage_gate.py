@@ -2,7 +2,8 @@
 """Portão de cobertura dos testes unitários.
 
 Lê o relatório JSON do gcovr produzido pelo twister e reprova a execução se
-houver linha ou ramo descoberto nos módulos do projeto.
+houver linha ou ramo descoberto nos módulos do projeto — ou se alguma fonte
+da aplicação tiver escapado da medição sem justificativa.
 
 A meta é 100% em linhas e em ramos. Ramos que o ambiente de teste
 comprovadamente não consegue exercitar ficam registrados em
@@ -31,14 +32,17 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 #: Caminho do arquivo de exclusões.
 EXCLUSIONS_PATH = REPO_ROOT / "tests" / "coverage-exclusions.json"
 
-#: Fontes que podem morar em ``src/``.
+#: Fontes que o firmware compila mas os testes deliberadamente não medem.
 #:
-#: ``src/`` é a única parte do firmware que os testes não compilam, e por isso
-#: a única que o relatório de cobertura não enxerga: um módulo colocado ali
-#: entra sem teste e o portão passa dizendo 100%, porque o arquivo nem aparece
-#: na medição. A regra que fecha esse buraco é de organização, não de
-#: cobertura: **módulo testável mora em lib/, src/ só amarra o firmware**.
-SRC_ALLOWED = {"main.c"}
+#: Um arquivo que não chega à medição não aparece no relatório, e cobertura de
+#: 100% sobre o que sobrou não quer dizer nada — o número continua bonito
+#: enquanto a cobertura real cai. Daí a lista ser explícita: cada isenção é uma
+#: decisão escrita, e qualquer arquivo novo que escape entra reprovando.
+UNMEASURED_SOURCES = {
+    "src/main.c": "Ponto de entrada: amarra os módulos e entra em laço "
+                  "infinito. Compilá-lo nos testes traria um segundo main(), "
+                  "que colidiria com o do ztest.",
+}
 
 
 class FileCoverage:
@@ -116,42 +120,50 @@ def load_exclusions() -> dict[str, dict[int, str]]:
     }
 
 
-def check_source_layout(measured: set[str]) -> list[str]:
-    """Verifica que não há código de módulo fora do alcance da medição.
+def check_everything_measured(measured: set[str]) -> list[str]:
+    """Verifica que nenhuma fonte da aplicação escapou da medição.
 
-    Cobertura de 100% só significa alguma coisa se todo o código que deveria
-    ser medido chegou à medição. Duas maneiras de um arquivo escapar, ambas
-    silenciosas:
+    Cobertura de 100% só quer dizer alguma coisa se todo o código que deveria
+    ser medido chegou à medição. Um arquivo pode escapar em silêncio de duas
+    maneiras: não estar na lista de fontes que os testes compilam, ou estar
+    numa parte da árvore que eles não incluem. Nos dois casos ele simplesmente
+    não aparece no relatório, e a porcentagem sobre o que sobrou continua
+    dizendo 100%.
 
-    1. Estar em ``src/``, que os testes não compilam.
-    2. Estar em ``lib/`` mas fora da lista de fontes do ``lib/CMakeLists.txt``,
-       caso em que não é compilado por ninguém — nem pelo firmware.
+    Este é o invariante que o portão defende — não uma regra de organização de
+    diretórios. Onde cada arquivo mora é escolha livre do projeto; o que não
+    pode é sair da medição sem alguém ter escrito por quê.
 
-    :param measured: Nomes de arquivo, relativos à raiz, presentes no
-                     relatório de cobertura.
+    :param measured: Nomes de arquivo, relativos à raiz do repositório,
+                     presentes no relatório de cobertura.
     :return: Uma mensagem por problema encontrado; vazio se estiver tudo bem.
     """
     problems: list[str] = []
-
-    lib_dir = REPO_ROOT / "lib"
-    for source in sorted(lib_dir.glob("*.c")):
-        name = f"lib/{source.name}"
-        if name not in measured:
-            problems.append(
-                f"{name} existe mas não aparece no relatório de cobertura."
-                f"\n    Ou falta listá-lo em lib/CMakeLists.txt — e aí ele não"
-                f" está sendo compilado nem no firmware —, ou os testes não o"
-                f" alcançam.")
-
     src_dir = REPO_ROOT / "src"
-    for source in sorted(src_dir.glob("*.c")):
-        if source.name not in SRC_ALLOWED:
+
+    for source in sorted(src_dir.rglob("*.c")):
+        name = source.relative_to(REPO_ROOT).as_posix()
+
+        if name in measured or name in UNMEASURED_SOURCES:
+            continue
+
+        problems.append(
+            f"{name} não aparece no relatório de cobertura."
+            f"\n    Ou os testes não o compilam — veja"
+            f" tests/vitrolinha_test.cmake e src/CMakeLists.txt —, ou ele ficou"
+            f" fora da lista de fontes e não está sendo compilado nem no"
+            f" firmware. Se for código que realmente não se testa, declare-o em"
+            f" UNMEASURED_SOURCES com a razão.")
+
+    for name in sorted(UNMEASURED_SOURCES):
+        if name in measured:
             problems.append(
-                f"src/{source.name} está fora do alcance dos testes."
-                f"\n    src/ só amarra o firmware; módulo testável mora em"
-                f" lib/, que é o que os testes compilam. Mova o arquivo, ou"
-                f" acrescente-o a SRC_ALLOWED se ele realmente não tiver o que"
-                f" testar.")
+                f"{name} está declarado em UNMEASURED_SOURCES mas foi medido."
+                f"\n    A isenção deixou de ser necessária: remova a entrada.")
+        elif not (REPO_ROOT / name).exists():
+            problems.append(
+                f"{name} está declarado em UNMEASURED_SOURCES mas não existe"
+                f" mais.\n    Remova a entrada.")
 
     return problems
 
@@ -172,7 +184,7 @@ def main() -> int:
         return 2
 
     exclusions = load_exclusions()
-    failures: list[str] = check_source_layout({cov.name for cov in files})
+    failures: list[str] = check_everything_measured({cov.name for cov in files})
 
     print()
     print(f"{'arquivo':<24} {'linhas':>16}   {'ramos':>16}")

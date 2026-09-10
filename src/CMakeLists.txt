@@ -5,7 +5,11 @@
 # de testes é exatamente o que roda na placa — sem uma segunda lista para
 # manter em sincronia.
 #
-#   add_subdirectory(${VITROLINHA_ROOT}/lib vitrolinha_lib)
+#   add_subdirectory(${VITROLINHA_ROOT}/src vitrolinha_src)
+#
+# O `main.c` NÃO entra aqui: ele é acrescentado pelo CMakeLists.txt da raiz.
+# É o que permite aos testes compilarem os módulos sem arrastar junto um
+# segundo `main()`, que colidiria com o do ztest.
 #
 # As fontes entram em `app` em vez de numa `zephyr_library`: em modo
 # aplicação, uma zephyr_library não recebe as dependências dos cabeçalhos

@@ -56,7 +56,7 @@ scripts/zephyr.sh bash            # sessão interativa no workspace
 ## Testes
 
 Os módulos rodam em `native_sim` sob `ztest`, compilados a partir da mesma lista
-de fontes que vai para a placa (`lib/CMakeLists.txt`).
+de fontes que vai para a placa (`src/CMakeLists.txt`).
 
 ```bash
 scripts/test.sh                # com cobertura e portão
@@ -72,19 +72,22 @@ para que a lista não vire depósito.
 
 Relatório navegável em `build-out/coverage/index.html`.
 
-### Onde o código novo vai
+### Nada escapa da medição
 
-> **Módulo testável mora em `lib/`. `src/` só amarra o firmware.**
+Cobertura de 100% só quer dizer alguma coisa se todo o código que deveria ser
+medido chegou à medição. Um arquivo que fica fora da lista de fontes
+simplesmente não aparece no relatório, e a porcentagem sobre o que sobrou
+continua dizendo 100% — o número fica bonito enquanto a cobertura real cai.
 
-Não é preferência de organização. Os testes compilam `lib/`, não `src/`: um
-módulo colocado em `src/` entra sem teste e o portão passa dizendo 100%, porque
-o arquivo nem chega a aparecer na medição. É a falha silenciosa clássica — o
-número continua bonito enquanto a cobertura real cai.
+Por isso o portão exige que **todo `.c` de `src/` apareça no relatório**. A
+única isenção hoje é o `src/main.c`, declarada em `UNMEASURED_SOURCES` com a
+razão (compilá-lo nos testes traria um segundo `main()`, que colidiria com o do
+ztest). Arquivo novo que escape entra reprovando, e isenção que deixou de ser
+necessária também.
 
-O portão fecha esse buraco: reprova qualquer `.c` em `src/` fora da lista
-`SRC_ALLOWED`, e reprova também `.c` em `lib/` que não apareça no relatório
-(sinal de que ficou fora do `lib/CMakeLists.txt` e não está sendo compilado nem
-no firmware).
+Não há regra de qual diretório usar: `src/` é o layout convencional do Zephyr e
+é onde tudo mora. O que o `src/CMakeLists.txt` lista, os testes compilam; o
+`main.c` é acrescentado à parte, pelo `CMakeLists.txt` da raiz.
 
 ## Organização do repositório
 
@@ -93,8 +96,7 @@ no firmware).
 | `west.yml` | Manifesto west. Zephyr fixado em v4.4.2, placa fora da árvore |
 | `prj.conf`, `app.overlay` | Configuração e sobreposição de devicetree da aplicação |
 | `include/vitrolinha/` | Contratos compartilhados pelas três trilhas |
-| `lib/` | Implementação dos módulos. Única lista de fontes do projeto |
-| `src/main.c` | Ponto de entrada. Na E0, pisca um LED e reporta os contratos |
+| `src/` | Implementação dos módulos e ponto de entrada. `src/CMakeLists.txt` é a única lista de fontes do projeto |
 | `tests/` | Um diretório por módulo, em `ztest` sobre `native_sim` |
 | `scripts/` | Bancada: imagem, workspace, build, testes, portão de cobertura |
 | `docker/` | Imagem enxuta de compilação |

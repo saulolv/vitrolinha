@@ -8,4 +8,4 @@
 #
 #   include(${CMAKE_CURRENT_LIST_DIR}/../vitrolinha_test.cmake)
 
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../lib vitrolinha_lib)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../src vitrolinha_src)

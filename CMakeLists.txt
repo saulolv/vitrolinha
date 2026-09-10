@@ -59,7 +59,9 @@ if(NOT "${BOARD}" STREQUAL "zbook" OR NOT "${BOARD_REVISION}" STREQUAL "p2")
 endif()
 
 # Módulos do projeto. A lista de fontes e o diretório de cabeçalhos moram em
-# lib/CMakeLists.txt, de onde os testes unitários também os consomem.
-add_subdirectory(lib)
+# src/CMakeLists.txt, de onde os testes unitários também os consomem.
+add_subdirectory(src)
 
+# O ponto de entrada fica de fora daquela lista: os testes trazem os módulos
+# sem trazer um segundo main().
 target_sources(app PRIVATE src/main.c)

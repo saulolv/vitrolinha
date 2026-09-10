@@ -8,7 +8,7 @@ da máquina de estados e o callback do temporizador, que roda em interrupção.
 Uma estrutura de 24 bytes escrita por dois contextos e lida por um terceiro
 pode ser lida pela metade.
 
-Decidimos usar um contador de versão (`lib/seqlock.c`) com as duas metades
+Decidimos usar um contador de versão (`src/seqlock.c`) com as duas metades
 deliberadamente assimétricas: **a escrita desabilita interrupções** por
 algumas dezenas de ciclos, o que exclui um escritor do outro; **a leitura
 nunca bloqueia e nunca desabilita interrupções**, apenas repete a cópia se
