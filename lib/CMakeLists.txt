@@ -23,8 +23,9 @@ target_sources(app PRIVATE
 )
 
 # Implementação de mentira do storage: duas faixas embutidas no binário.
-# Na E3 vira uma escolha entre esta e storage_sd.c; hoje há uma só, e
-# antecipar o Kconfig da escolha seria configurar um seletor de uma opção.
+# Quando o storage do cartão existir (issue #9), vira uma escolha entre as
+# duas; hoje há uma só, e antecipar o Kconfig da escolha seria configurar um
+# seletor de uma opção.
 target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/storage_fake.c
 )

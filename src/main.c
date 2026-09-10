@@ -1,21 +1,23 @@
 /**
  * @file main.c
- * @brief Ponto de entrada do Vitrolinha — etapa E0.
+ * @brief Ponto de entrada do Vitrolinha.
  *
- * A E0 não toca música: ela prova que o ambiente está de pé. O firmware
- * pisca um LED, o que é o critério de conclusão da etapa, e imprime no
- * console um relatório de bring-up que exercita os quatro contratos
- * compartilhados. Se o relatório sai completo, as três trilhas podem
- * começar em paralelo sem esperar umas pelas outras.
+ * **Andaime, não produto.** Este `main` existe para provar que o ambiente
+ * está de pé: pisca um LED e imprime no console um relatório de bring-up
+ * que exercita os quatro contratos compartilhados. Se o relatório sai
+ * completo, as três trilhas podem trabalhar em paralelo sem esperar umas
+ * pelas outras.
  *
- * Nada aqui sobrevive à E4: as threads `player`, `ui`, `input` e `loader`
- * substituem este main.
+ * É descartado inteiro quando as threads `player`, `ui`, `input` e `loader`
+ * existirem — nenhuma linha daqui foi escrita para durar.
  */
 
 #include <vitrolinha/cmd.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/track.h>
+
+#include <app_version.h>
 
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
@@ -56,8 +58,9 @@ BUILD_ASSERT(DT_NODE_HAS_PROP(DT_NODELABEL(sdhc0), cd_gpios),
 /**
  * @brief LED de sinal de vida.
  *
- * Um dos quatro LEDs de GPIO puro. Na E6 um deles vira o pino de
- * instrumentação de tempo — daí valer a pena que o sinal de vida seja um
+ * Um dos quatro LEDs de GPIO puro. Um deles vai virar o pino de
+ * instrumentação das medições de tempo (issue #23), já que a placa não tem
+ * pino de header confirmado — daí valer a pena que o sinal de vida seja um
  * ponto único no código, fácil de mover.
  */
 static const struct gpio_dt_spec heartbeat = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
@@ -90,8 +93,9 @@ static int heartbeat_init(void)
 /**
  * @brief Exercita o contrato do @ref storage.h e lista a biblioteca no log.
  *
- * Na E0 quem responde é a implementação de mentira, com duas faixas
- * embutidas no binário. Na E3 passa a ser o cartão, sem mudança aqui.
+ * Hoje quem responde é a implementação de mentira, com duas faixas
+ * embutidas no binário. Quando o cartão entrar (issue #9), esta função não
+ * muda: é o que a fronteira do @ref storage.h compra.
  *
  * @return Quantidade de faixas encontradas, ou erro negativo do contrato.
  */
@@ -185,7 +189,7 @@ int main(void)
 {
 	int err;
 
-	LOG_INF("Vitrolinha " CONFIG_BOARD_TARGET " — E0");
+	LOG_INF("Vitrolinha %s em " CONFIG_BOARD_TARGET, APP_VERSION_STRING);
 
 	err = heartbeat_init();
 	if (err != 0) {

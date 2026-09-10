@@ -25,8 +25,20 @@ import json
 import pathlib
 import sys
 
-#: Caminho, relativo à raiz do repositório, do arquivo de exclusões.
-EXCLUSIONS_PATH = pathlib.Path(__file__).resolve().parent.parent / "tests" / "coverage-exclusions.json"
+#: Raiz do repositório, deduzida da posição deste script.
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+#: Caminho do arquivo de exclusões.
+EXCLUSIONS_PATH = REPO_ROOT / "tests" / "coverage-exclusions.json"
+
+#: Fontes que podem morar em ``src/``.
+#:
+#: ``src/`` é a única parte do firmware que os testes não compilam, e por isso
+#: a única que o relatório de cobertura não enxerga: um módulo colocado ali
+#: entra sem teste e o portão passa dizendo 100%, porque o arquivo nem aparece
+#: na medição. A regra que fecha esse buraco é de organização, não de
+#: cobertura: **módulo testável mora em lib/, src/ só amarra o firmware**.
+SRC_ALLOWED = {"main.c"}
 
 
 class FileCoverage:
@@ -104,6 +116,46 @@ def load_exclusions() -> dict[str, dict[int, str]]:
     }
 
 
+def check_source_layout(measured: set[str]) -> list[str]:
+    """Verifica que não há código de módulo fora do alcance da medição.
+
+    Cobertura de 100% só significa alguma coisa se todo o código que deveria
+    ser medido chegou à medição. Duas maneiras de um arquivo escapar, ambas
+    silenciosas:
+
+    1. Estar em ``src/``, que os testes não compilam.
+    2. Estar em ``lib/`` mas fora da lista de fontes do ``lib/CMakeLists.txt``,
+       caso em que não é compilado por ninguém — nem pelo firmware.
+
+    :param measured: Nomes de arquivo, relativos à raiz, presentes no
+                     relatório de cobertura.
+    :return: Uma mensagem por problema encontrado; vazio se estiver tudo bem.
+    """
+    problems: list[str] = []
+
+    lib_dir = REPO_ROOT / "lib"
+    for source in sorted(lib_dir.glob("*.c")):
+        name = f"lib/{source.name}"
+        if name not in measured:
+            problems.append(
+                f"{name} existe mas não aparece no relatório de cobertura."
+                f"\n    Ou falta listá-lo em lib/CMakeLists.txt — e aí ele não"
+                f" está sendo compilado nem no firmware —, ou os testes não o"
+                f" alcançam.")
+
+    src_dir = REPO_ROOT / "src"
+    for source in sorted(src_dir.glob("*.c")):
+        if source.name not in SRC_ALLOWED:
+            problems.append(
+                f"src/{source.name} está fora do alcance dos testes."
+                f"\n    src/ só amarra o firmware; módulo testável mora em"
+                f" lib/, que é o que os testes compilam. Mova o arquivo, ou"
+                f" acrescente-o a SRC_ALLOWED se ele realmente não tiver o que"
+                f" testar.")
+
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", type=pathlib.Path,
@@ -120,7 +172,7 @@ def main() -> int:
         return 2
 
     exclusions = load_exclusions()
-    failures: list[str] = []
+    failures: list[str] = check_source_layout({cov.name for cov in files})
 
     print()
     print(f"{'arquivo':<24} {'linhas':>16}   {'ramos':>16}")

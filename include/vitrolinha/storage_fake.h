@@ -5,14 +5,14 @@
  * A implementação de mentira devolve duas faixas embutidas no binário. Ela
  * existe por dois motivos:
  *
- * 1. Destravar as trilhas A e B antes de a E3 existir: dá para tocar e
+ * 1. Destravar as trilhas A e B antes de o cartão existir: dá para tocar e
  *    desenhar a biblioteca sem cartão nenhum na placa.
  * 2. Tornar testáveis os caminhos de falha do contrato. "Sem cartão" e
  *    "falha de leitura" não se reproduzem com hardware de verdade sem alguém
  *    puxar o cartão na hora certa.
  *
  * Este cabeçalho **não** faz parte do contrato: nenhum módulo de produção o
- * inclui. Some junto com a implementação de mentira, na E3.
+ * inclui, e ele some junto com a implementação de mentira (issue #9).
  *
  * @see docs/especificacao-vitrolinha.md, seção 9
  */

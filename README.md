@@ -72,6 +72,20 @@ para que a lista não vire depósito.
 
 Relatório navegável em `build-out/coverage/index.html`.
 
+### Onde o código novo vai
+
+> **Módulo testável mora em `lib/`. `src/` só amarra o firmware.**
+
+Não é preferência de organização. Os testes compilam `lib/`, não `src/`: um
+módulo colocado em `src/` entra sem teste e o portão passa dizendo 100%, porque
+o arquivo nem chega a aparecer na medição. É a falha silenciosa clássica — o
+número continua bonito enquanto a cobertura real cai.
+
+O portão fecha esse buraco: reprova qualquer `.c` em `src/` fora da lista
+`SRC_ALLOWED`, e reprova também `.c` em `lib/` que não apareça no relatório
+(sinal de que ficou fora do `lib/CMakeLists.txt` e não está sendo compilado nem
+no firmware).
+
 ## Organização do repositório
 
 | Caminho | O que é |

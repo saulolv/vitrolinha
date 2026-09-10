@@ -3,11 +3,11 @@
  * @brief Implementação de mentira de @ref storage.h, com faixas embutidas.
  *
  * Serve o contrato inteiro sem cartão, sem sistema de arquivos e sem SPI.
- * Existe para destravar as trilhas A e B antes da E3 e para tornar
- * reproduzíveis os caminhos de falha, que com hardware de verdade dependem
- * de alguém puxar o cartão na hora certa.
+ * Existe para destravar as trilhas A e B antes de o cartão existir e para
+ * tornar reproduzíveis os caminhos de falha, que com hardware de verdade
+ * dependem de alguém puxar o cartão na hora certa.
  *
- * Na E3 este arquivo é substituído por `storage_sd.c`. Quando isso
+ * Este arquivo é substituído por `storage_sd.c` (issue #9). Quando isso
  * acontecer, nenhum chamador muda — é o que a fronteira do @ref storage.h
  * compra.
  */
@@ -23,8 +23,8 @@
  * @brief Uma faixa embutida no binário.
  *
  * O nome fica ao lado do conteúdo em vez de ser extraído do cabeçalho: ler o
- * cabeçalho RTTTL é trabalho do interpretador (E3), e antecipá-lo aqui seria
- * manter duas cópias da mesma regra até lá.
+ * cabeçalho RTTTL é trabalho do interpretador (issue #10), e antecipá-lo
+ * aqui seria manter duas cópias da mesma regra até lá.
  */
 struct fake_track {
 	const char *name;

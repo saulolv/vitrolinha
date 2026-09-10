@@ -44,8 +44,10 @@ endif()
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
+# A versão não fica aqui: o Zephyr a lê do arquivo VERSION na raiz e gera
+# <app_version.h>, que é como o firmware a imprime no console. Declará-la
+# também em project() criaria duas fontes para o mesmo número.
 project(vitrolinha
-        VERSION 0.1.0
         DESCRIPTION "Tocador de músicas embarcado sobre Zephyr RTOS"
         LANGUAGES C)
 
