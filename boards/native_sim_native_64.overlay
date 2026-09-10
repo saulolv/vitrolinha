@@ -1,0 +1,124 @@
+/*
+ * Sobreposição de devicetree do alvo de simulação.
+ *
+ * Reproduz a ZBook no desktop com os periféricos emulados do Zephyr, para que
+ * as trilhas de interface e de armazenamento não fiquem na fila da placa
+ * física. O que não é reproduzível aqui é o áudio: não existe PWM emulado no
+ * Zephyr, e o buzzer continua exigindo hardware.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/*
+ * A tela, no tamanho real do OLED.
+ *
+ * O driver SDL é configurado em mono 1 bpp com tiling vertical (ver
+ * boards/native_sim.conf), que é o mesmo formato que o SSD1306 reporta. O
+ * LVGL passa pelo mesmo caminho de código nos dois alvos — inclusive pelo
+ * arredondamento de área para múltiplos de 8 em Y.
+ */
+&sdl_dc {
+	width = <128>;
+	height = <64>;
+};
+
+/*
+ * Teclado do host acionando pinos de GPIO emulados.
+ *
+ * O nó tem de ser filho do controlador `zephyr,gpio-emul` — o driver
+ * verifica isso com BUILD_ASSERT, então declará-lo na raiz não compila.
+ *
+ * O índice do vetor é o número do pino, e o valor é o scancode HID da tecla.
+ * O pino 0 fica com o scancode 0 ("no event") porque já é o led0 do
+ * native_sim, que o sinal de vida usa.
+ *
+ * Limitação do driver: só ativo-alto, porque não há evento para tecla solta.
+ * Por isso os botões aqui são GPIO_ACTIVE_HIGH, ao contrário dos da placa. A
+ * diferença morre no devicetree — o `input_gpio_keys` normaliza, e quem
+ * consome os eventos não distingue.
+ */
+&gpio0 {
+	gpio_emul_sdl: gpio_emul_sdl {
+		compatible = "zephyr,gpio-emul-sdl";
+		scancodes = <0>,   /* pino 0 — led0, sinal de vida */
+			    <30>,  /* pino 1 — tecla 1 */
+			    <31>,  /* pino 2 — tecla 2 */
+			    <32>,  /* pino 3 — tecla 3 */
+			    <33>,  /* pino 4 — tecla 4 */
+			    <40>,  /* pino 5 — Enter */
+			    <80>,  /* pino 6 — seta esquerda */
+			    <79>;  /* pino 7 — seta direita */
+	};
+};
+
+/ {
+	/*
+	 * Botões de transporte.
+	 *
+	 * A ordem aqui é a lógica, BTN_0 a BTN_3. Qual botão físico da placa
+	 * corresponde a qual continua sendo pergunta da bancada (issue #27):
+	 * o P2 não tem serigrafia e a ordem física não segue a numérica.
+	 */
+	buttons {
+		compatible = "gpio-keys";
+		debounce-interval-ms = <20>;
+
+		sim_button0: button0 {
+			zephyr,code = <INPUT_BTN_0>;
+			gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+			label = "BUTTON0 (tecla 1)";
+		};
+
+		sim_button1: button1 {
+			zephyr,code = <INPUT_BTN_1>;
+			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			label = "BUTTON1 (tecla 2)";
+		};
+
+		sim_button2: button2 {
+			zephyr,code = <INPUT_BTN_2>;
+			gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+			label = "BUTTON2 (tecla 3)";
+		};
+
+		sim_button3: button3 {
+			zephyr,code = <INPUT_BTN_3>;
+			gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+			label = "BUTTON3 (tecla 4)";
+		};
+	};
+
+	/*
+	 * Clique e rotação do encoder.
+	 *
+	 * O clique é direto: mesmo código da placa, mesmo driver. Já a
+	 * rotação não pode passar pelo `gpio-qdec`, que espera quadratura A/B
+	 * limpa — duas teclas não produzem isso. As setas viram teclas comuns
+	 * aqui, e src/sim_encoder.c as converte em INPUT_REL_WHEEL, que é o
+	 * que o indev do LVGL de fato consome.
+	 */
+	encoder {
+		compatible = "gpio-keys";
+		debounce-interval-ms = <20>;
+
+		sim_enc_button: enc-button {
+			zephyr,code = <INPUT_KEY_ENTER>;
+			gpios = <&gpio0 5 GPIO_ACTIVE_HIGH>;
+			label = "Encoder Button (Enter)";
+		};
+
+		sim_enc_ccw: enc-ccw {
+			zephyr,code = <INPUT_KEY_LEFT>;
+			gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
+			label = "Encoder anti-horario (seta esquerda)";
+		};
+
+		sim_enc_cw: enc-cw {
+			zephyr,code = <INPUT_KEY_RIGHT>;
+			gpios = <&gpio0 7 GPIO_ACTIVE_HIGH>;
+			label = "Encoder horario (seta direita)";
+		};
+	};
+};

@@ -33,3 +33,9 @@ target_sources(app PRIVATE
 target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/storage_fake.c
 )
+
+# Só no simulador: converte as setas do teclado em passos de encoder, papel
+# que na placa é do driver gpio-qdec.
+target_sources_ifdef(CONFIG_BOARD_NATIVE_SIM app PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}/sim_encoder.c
+)

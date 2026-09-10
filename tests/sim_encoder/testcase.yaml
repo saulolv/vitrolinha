@@ -1,0 +1,9 @@
+tests:
+  vitrolinha.sim_encoder:
+    tags:
+      - vitrolinha
+      - sim_encoder
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim

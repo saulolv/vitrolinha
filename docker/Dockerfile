@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gperf \
         lcov \
         libmagic1 \
+        libsdl2-dev \
         make \
         ninja-build \
         python3 \

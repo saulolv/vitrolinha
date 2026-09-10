@@ -1,0 +1,81 @@
+/*
+ * Sobreposição de devicetree da ZBook P2.
+ *
+ * Um arquivo em boards/ só é aplicado se o nome casar exatamente com a string
+ * de build montada a partir de placa, qualificadores e revisão — e errar o
+ * nome não gera erro, a sobreposição apenas não é aplicada. Aqui isso não é
+ * risco silencioso: os BUILD_ASSERT em src/board_zbook.h conferem, em tempo
+ * de compilação, que este arquivo foi mesmo aplicado.
+ *
+ * O que é comum aos dois alvos de compilação está em app.overlay.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/i2c/i2c.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/*
+ * Divisor automático no slice do buzzer.
+ *
+ * A placa fixa `divider-int-8 = <255>`, o que põe o driver em modo fixo: ele
+ * não reescala o divisor por nota e, nesse caminho, não valida o limite de
+ * 16 bits do registrador de wrap. Apagar a propriedade devolve o driver ao
+ * modo automático, em que ele escolhe o divisor por potência de dois a cada
+ * nota mantendo o contador acima de 32768.
+ *
+ * Ganho de afinação: com o divisor fixo o erro chega a ~6 cents na oitava 7 —
+ * justamente onde a transposição para cima leva a melodia; em modo automático
+ * fica em ~0,05 cent.
+ *
+ * A regra de derivar o período de pwm_get_cycles_per_sec() continua valendo
+ * nos dois modos, e é ela que evita a armadilha de verdade.
+ */
+&pwm {
+	/delete-property/ divider-int-8;
+};
+
+/*
+ * I²C a 400 kHz.
+ *
+ * A placa deixa em 100 kHz, onde um quadro cheio de 128x64 a 1 bpp (1024 B)
+ * custa ~92 ms no barramento — os 10 fps do plano não caberiam. A 400 kHz
+ * cai para ~23 ms. O que sustenta a taxa mesmo é o desenho por região suja;
+ * isto só tira o barramento do caminho crítico da troca de tela.
+ */
+&i2c0 {
+	clock-frequency = <I2C_BITRATE_FAST>;
+};
+
+/*
+ * Detecção de cartão ligada à pilha SD.
+ *
+ * O nó `sd_cd` existe na placa, mas nenhum driver o consome por padrão. Sem
+ * `cd-gpios`, `sdhc_spi_get_card_present` devolve 1 incondicionalmente —
+ * "SPI has no card presence method, assume card is in slot" — e o firmware
+ * nunca descobre que não há cartão.
+ *
+ * GPIO 33 = gpio0_hi pino 1, ativo-baixo, com pull-up externo de 10k.
+ */
+&sdhc0 {
+	cd-gpios = <&gpio0_hi 1 GPIO_ACTIVE_LOW>;
+};
+
+/*
+ * Debounce explícito nos botões.
+ *
+ * A propriedade é do nó `gpio-keys` pai, não de cada filho, e o padrão
+ * herdado do binding é 30 ms. Declarar 20 ms deixa o número no repositório
+ * em vez de num arquivo de terceiros.
+ *
+ * O nó dos quatro botões de transporte está na raiz; o do clique do encoder
+ * é filho de gpio0_hi e não tem rótulo, daí o caminho completo. Caminho que
+ * não existir vira erro de compilação do devicetree, não omissão silenciosa.
+ */
+&{/buttons} {
+	debounce-interval-ms = <20>;
+};
+
+&{/soc/gpio@40028000/gpio-port@1/encoder} {
+	debounce-interval-ms = <20>;
+};

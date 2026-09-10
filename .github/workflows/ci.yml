@@ -55,6 +55,12 @@ jobs:
           }
           echo "OK: alvo P1 recusado pela trava de revisão."
 
+      - name: Compilar o alvo de simulação
+        # O simulador é o que mantém as trilhas de interface e de
+        # armazenamento fora da fila da placa. Se ele parar de compilar, isso
+        # tem de aparecer aqui e não na véspera de uma demonstração.
+        run: west build -b native_sim/native/64 -d build-sim vitrolinha
+
       - name: Publicar os artefatos
         uses: actions/upload-artifact@v4
         with:

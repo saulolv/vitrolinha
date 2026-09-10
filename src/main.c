@@ -10,6 +10,10 @@
  *
  * É descartado inteiro quando as threads `player`, `ui`, `input` e `loader`
  * existirem — nenhuma linha daqui foi escrita para durar.
+ *
+ * Compila para os dois alvos: a ZBook P2 e o simulador. O que difere entre
+ * eles é devicetree e configuração, não código — é o que torna possível
+ * desenvolver a interface e o armazenamento sem a placa em mãos.
  */
 
 #include <vitrolinha/cmd.h>
@@ -27,30 +31,13 @@
 LOG_MODULE_REGISTER(vitrolinha, LOG_LEVEL_INF);
 
 /*
- * Segunda linha de defesa da trava de revisão da placa, agora pelo
- * devicetree. O CMakeLists rejeita o alvo errado antes de compilar; estes
- * BUILD_ASSERT pegam o caso de alguém chegar ao build por outro caminho,
- * como um IDE que monte a linha de comando sozinho.
- *
- * Os três nós existem somente na revisão P2.
+ * Verificações de compilação da placa física. No alvo de simulação não há
+ * encoder, display SSD1306 nem cartão para conferir — os periféricos
+ * emulados são outros, e o overlay que os descreve é outro.
  */
-BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(encoder_qdec)),
-	     "Sem encoder no devicetree: compile com -b zbook@p2/rp2350b/m33 "
-	     "(o sufixo @p2 e obrigatorio).");
-BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(enc_button)),
-	     "Sem clique de encoder no devicetree: falta o sufixo @p2.");
-BUILD_ASSERT(DT_HAS_CHOSEN(zephyr_display),
-	     "Sem chosen zephyr,display: falta o sufixo @p2.");
-
-/*
- * Confirma que a sobreposição da aplicação foi mesmo aplicada. Um app.overlay
- * ignorado não gera aviso; sem esta verificação, o firmware compilaria com o
- * I2C a 100 kHz e o cartão sempre "presente".
- */
-BUILD_ASSERT(DT_PROP(DT_NODELABEL(i2c0), clock_frequency) == 400000,
-	     "app.overlay nao foi aplicado: i2c0 ainda esta em 100 kHz.");
-BUILD_ASSERT(DT_NODE_HAS_PROP(DT_NODELABEL(sdhc0), cd_gpios),
-	     "app.overlay nao foi aplicado: sdhc0 esta sem cd-gpios.");
+#if defined(CONFIG_BOARD_ZBOOK)
+#include "board_zbook.h"
+#endif
 
 /** @brief Período de meio piscar do LED de sinal de vida. */
 #define HEARTBEAT_PERIOD K_MSEC(500)
