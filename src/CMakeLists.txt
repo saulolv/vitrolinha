@@ -27,12 +27,27 @@ target_sources(app PRIVATE
 )
 
 # Implementação de mentira do storage: duas faixas embutidas no binário.
-# Quando o storage do cartão existir (issue #9), vira uma escolha entre as
-# duas; hoje há uma só, e antecipar o Kconfig da escolha seria configurar um
+# Quando o storage do cartão existir (issues #10 e #11), vira uma escolha entre
+# as duas; hoje há uma só, e antecipar o Kconfig da escolha seria configurar um
 # seletor de uma opção.
 target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/storage_fake.c
 )
+
+# O cartão. Condicional porque o módulo monta um volume FAT: sem o sistema de
+# arquivos ele não teria o que fazer, e arrastá-lo para dentro dos testes dos
+# outros módulos obrigaria cada um deles a configurar uma pilha de disco que
+# não usa. A omissão não é silenciosa — quem chamar `card_init()` sem esta
+# opção não linka.
+#
+# `ELMFAT` é a biblioteca de interface que o módulo FatFs exporta: dela vêm o
+# `ff.h`, de onde sai o tipo `FATFS` do objeto de trabalho do volume, e o
+# `ZEPHYR_CONFIG_OVERRIDE` que faz esse cabeçalho enxergar a configuração do
+# Zephyr.
+if(CONFIG_FAT_FILESYSTEM_ELM)
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/card.c)
+  target_link_libraries(app PRIVATE ELMFAT)
+endif()
 
 # Só no simulador: converte as setas do teclado em passos de encoder, papel
 # que na placa é do driver gpio-qdec.

@@ -15,6 +15,10 @@ O portão também reprova exclusão obsoleta: se um ramo excluído passar a ser
 coberto, a entrada tem de sair do arquivo. Sem isso, a lista viraria um
 depósito de dívidas antigas.
 
+A única categoria dispensada em bloco são os ramos internos dos macros de log
+do Zephyr — ver ``LOG_CALL_RE``. Linha sem execução nenhuma continua
+reprovando, inclusive linha de log.
+
 Uso:
     python3 scripts/coverage_gate.py twister-out/coverage.json
 """
@@ -24,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 import sys
 
 #: Raiz do repositório, deduzida da posição deste script.
@@ -31,6 +36,22 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 #: Caminho do arquivo de exclusões.
 EXCLUSIONS_PATH = REPO_ROOT / "tests" / "coverage-exclusions.json"
+
+#: Uma linha que não faz nada além de chamar um macro de log do Zephyr.
+#:
+#: Cada `LOG_ERR`, `LOG_WRN`, `LOG_INF` ou `LOG_DBG` traz quatro ramos para o
+#: relatório, dos quais dois nunca são tomados: são decisões internas do macro
+#: — o teste de contexto de usuário e o caminho de buffer de log cheio —, e não
+#: do código que as escreveu. Registrá-las uma a uma em
+#: ``tests/coverage-exclusions.json`` seria uma lista indexada por número de
+#: linha, que se desatualiza na primeira edição do arquivo e que cresceria com
+#: cada mensagem de log nova do projeto. Isto aqui é a mesma decisão, escrita
+#: uma vez.
+#:
+#: A regra é deliberadamente estreita: a linha tem de ser SÓ a chamada de log.
+#: Um `if (x) { LOG_ERR(...); }` numa linha só continua sendo cobrado, porque
+#: aí há um ramo de verdade misturado.
+LOG_CALL_RE = re.compile(r"^\s*LOG_(?:HEXDUMP_)?(?:ERR|WRN|INF|DBG)\s*\(")
 
 #: Fontes que o firmware compila mas os testes deliberadamente não medem.
 #:
@@ -120,6 +141,27 @@ def load_exclusions() -> dict[str, dict[int, str]]:
     }
 
 
+def log_call_lines(name: str) -> set[int]:
+    """Acha as linhas de @p name que são apenas uma chamada de log.
+
+    :param name: Caminho do arquivo, relativo à raiz do repositório.
+    :return: Números de linha, contados a partir de 1. Vazio se o arquivo não
+             existir — caso em que o portão cobra os ramos normalmente, que é
+             o lado seguro.
+    """
+    source = REPO_ROOT / name
+
+    if not source.exists():
+        return set()
+
+    return {
+        number
+        for number, line in enumerate(
+            source.read_text(encoding="utf-8").splitlines(), start=1)
+        if LOG_CALL_RE.match(line)
+    }
+
+
 def check_everything_measured(measured: set[str]) -> list[str]:
     """Verifica que nenhuma fonte da aplicação escapou da medição.
 
@@ -192,12 +234,18 @@ def main() -> int:
 
     for cov in files:
         allowed = exclusions.get(cov.name, {})
-        unexplained = [n for n in cov.missing_branches if n not in allowed]
+        log_lines = log_call_lines(cov.name) & set(cov.missing_branches)
+        unexplained = [n for n in cov.missing_branches
+                       if n not in allowed and n not in log_lines]
         stale = [n for n in allowed if n not in cov.missing_branches]
 
         print(f"{cov.name:<24} "
               f"{cov.lines_hit:>4}/{cov.lines_total:<4} ({cov.line_percent:6.2f}%)   "
               f"{cov.branches_hit:>4}/{cov.branches_total:<4} ({cov.branch_percent:6.2f}%)")
+
+        if log_lines:
+            print(f"    {len(log_lines)} linha(s) de chamada de log: ramos internos "
+                  "do macro, nao do codigo")
 
         if cov.missing_lines:
             failures.append(

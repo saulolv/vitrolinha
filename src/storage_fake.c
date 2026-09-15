@@ -7,9 +7,9 @@
  * tornar reproduzíveis os caminhos de falha, que com hardware de verdade
  * dependem de alguém puxar o cartão na hora certa.
  *
- * Este arquivo é substituído por `storage_sd.c` (issue #9). Quando isso
- * acontecer, nenhum chamador muda — é o que a fronteira do @ref storage.h
- * compra.
+ * Este arquivo é substituído pelo storage do cartão (issues #10 e #11),
+ * que se apoia no módulo `card`. Quando isso acontecer, nenhum chamador
+ * muda — é o que a fronteira do @ref storage.h compra.
  */
 
 #include <vitrolinha/storage.h>
