@@ -16,6 +16,7 @@
  * desenvolver a interface e o armazenamento sem a placa em mãos.
  */
 
+#include <vitrolinha/card.h>
 #include <vitrolinha/cmd.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
@@ -78,11 +79,51 @@ static int heartbeat_init(void)
 }
 
 /**
+ * @brief Anuncia toda mudança de estado do cartão.
+ *
+ * Aqui só imprime. Quando a interface existir, é por este caminho que a tela
+ * de erro aparece e some (issues #29 e #30).
+ *
+ * @param state O estado novo.
+ */
+static void card_changed(enum card_state state)
+{
+	LOG_INF("Cartao mudou para: %s", card_state_name(state));
+}
+
+/**
+ * @brief Monta o cartão e põe o monitor de presença de pé.
+ *
+ * Ausência de cartão não é falha de inicialização: a placa continua ligando,
+ * e o monitor passa a avisar se um cartão aparecer.
+ */
+static void card_report(void)
+{
+	int err;
+
+	/* Observar antes de inicializar, para não perder a transição de quem
+	 * liga a placa com o cartão já no soquete.
+	 */
+	card_observe(card_changed);
+
+	err = card_init();
+	if (err != 0) {
+		LOG_ERR("Monitor do cartao nao subiu: %d", err);
+		return;
+	}
+
+	LOG_INF("Cartao: %s (ponto de montagem %s)", card_state_name(card_get_state()),
+		CARD_MOUNT_POINT);
+}
+
+/**
  * @brief Exercita o contrato do @ref storage.h e lista a biblioteca no log.
  *
  * Hoje quem responde é a implementação de mentira, com duas faixas
- * embutidas no binário. Quando o cartão entrar (issue #9), esta função não
- * muda: é o que a fronteira do @ref storage.h compra.
+ * embutidas no binário — por isso ela não repara no cartão que o
+ * @ref card_report acabou de montar. Ligar uma coisa na outra é das issues
+ * #10 e #11, e quando acontecer esta função não muda: é o que a fronteira do
+ * @ref storage.h compra.
  *
  * @return Quantidade de faixas encontradas, ou erro negativo do contrato.
  */
@@ -92,7 +133,8 @@ static int library_report(void)
 	static uint8_t buf[STORAGE_FILE_MAX];
 	int count;
 
-	LOG_INF("Cartao: %s", storage_present() ? "presente" : "ausente");
+	LOG_INF("Faixas embutidas: %s",
+		storage_present() ? "disponiveis" : "indisponiveis");
 
 	count = storage_scan(library, ARRAY_SIZE(library));
 	if (count < 0) {
@@ -183,6 +225,7 @@ int main(void)
 		return err;
 	}
 
+	card_report();
 	(void)library_report();
 	snapshot_report();
 	cmd_report();

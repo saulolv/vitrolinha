@@ -117,6 +117,7 @@ CONFIG_LV_FONT_DEFAULT_UNSCII_8=y
 
 CONFIG_SD_DATA_TIMEOUT=500                   # o padrão é 10000 ms x 3 tentativas
 CONFIG_SD_DATA_RETRIES=1
+CONFIG_FS_FATFS_MOUNT_MKFS=n                 # o padrão é y, e FORMATA o cartão que não montar
 CONFIG_FS_FATFS_NUM_FILES=2                  # o padrão de 4 é pré-alocado estaticamente
 CONFIG_FS_FATFS_NUM_DIRS=2
 
@@ -131,6 +132,22 @@ CONFIG_THREAD_ANALYZER_AUTO_THREAD_PRIORITY=10   # o padrão também é 0
 preemptível. Deixado assim, o laço do LVGL **sobrepuja qualquer thread do
 player** — o inverso exato da arquitetura pretendida. É a única configuração
 desta lista que, omitida, invalida a tese do trabalho sem dar erro nenhum.
+
+**`CONFIG_FS_FATFS_MOUNT_MKFS` tem padrão `y`** e é a única desta lista que,
+omitida, destrói dado do usuário. Com ela ligada, o `fs_mount` **formata** o
+volume que não montar — "this option is destructive to data and will
+automatically destroy your disk", diz o texto de ajuda da própria opção. Um
+cartão com a partição danificada entraria na placa com a biblioteca e sairia
+vazio, sem erro. O módulo `card` ainda passa `FS_MOUNT_FLAG_NO_FORMAT` na
+montagem, para que religar a opção por engano não rearme a bomba. Ver a
+[ADR 0008](docs/adr/0008-a-aplicacao-nunca-formata-o-cartao.md).
+
+O `CONFIG_SD_INIT_TIMEOUT` fica no padrão de 1500 ms, e não cortado como os
+dois acima: é o prazo que a especificação física do SD dá ao cartão para
+concluir a inicialização, e encurtá-lo trocaria uma espera rara por rejeitar
+cartões legítimos. A consequência é que **uma montagem pode custar 1,5 s**, e é
+ela que decide onde a montagem mora — ver a [ADR
+0007](docs/adr/0007-monitor-do-cartao-em-thread-propria.md).
 
 O `CONFIG_FS_FATFS_LFN` fica **desligado** (ver a decisão sobre nome exibido), o
 que também dispensa decidir entre `LFN_MODE_BSS` e reentrância: `REENTRANT`
@@ -347,8 +364,16 @@ cartão possa atrasar a próxima nota.
 | `input` | Média-alta | Traduz eventos em comandos e publica em fila |
 | `ui` | Baixa | Laço do LVGL em intervalo fixo, redesenho por região suja |
 | `loader` | Baixa | Lê o arquivo para o buffer, interpreta e preenche a fila de eventos |
+| `card` | A mais baixa (12) | Sonda o soquete a cada 250 ms, monta e desmonta. É a única que bloqueia por mais de um milissegundo |
 
 O `loader` interpreta **do buffer em RAM**, não do cartão.
+
+O `card` é a metade de plataforma do `storage`: monta o volume e publica os
+três estados do cartão num inteiro atômico, que todo mundo lê sem bloquear.
+Tem thread própria porque montar pode custar 1,5 s e a fila de trabalho do
+sistema é **cooperativa** (`CONFIG_SYSTEM_WORKQUEUE_PRIORITY=-1`), o que faria
+uma montagem segurar o `player`. Ver a [ADR
+0007](docs/adr/0007-monitor-do-cartao-em-thread-propria.md).
 
 ### Quem é o dono do relógio
 

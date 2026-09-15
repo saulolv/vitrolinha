@@ -12,7 +12,7 @@
  *    puxar o cartão na hora certa.
  *
  * Este cabeçalho **não** faz parte do contrato: nenhum módulo de produção o
- * inclui, e ele some junto com a implementação de mentira (issue #9).
+ * inclui, e ele some junto com a implementação de mentira (issues #10 e #11).
  *
  * @see docs/especificacao-vitrolinha.md, seção 9
  */

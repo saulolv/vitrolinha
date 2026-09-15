@@ -7,8 +7,9 @@
  * reproduzem com hardware de verdade sem alguém puxar o cartão no
  * milissegundo certo.
  *
- * Quando esta implementação for trocada pela do cartão (issue #9), este
- * arquivo continua descrevendo o contrato — o que muda é quem o cumpre.
+ * Quando esta implementação for trocada pela do cartão (issues #10 e #11),
+ * este arquivo continua descrevendo o contrato — o que muda é quem o
+ * cumpre.
  */
 
 #include <vitrolinha/storage.h>

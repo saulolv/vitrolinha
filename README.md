@@ -81,6 +81,12 @@ a melodia continua exigindo a placa. Ele também não substitui a bancada em
 nada da E1 — limiar do piezo, estalo na troca de nota, ordem física dos
 botões e jitter real.
 
+Cartão também não: no alvo simulado não há disco registrado, e o firmware
+relata o cartão como **ausente**. Não é remendo — é o mesmo caminho de código
+que a placa percorre com o soquete vazio, e é bom que ele seja exercitado
+todo dia. Inserção, remoção e volume ilegível são exercitados em
+[`tests/card/`](tests/card/), com um disco que o próprio teste põe e tira.
+
 **A janela** precisa de um servidor gráfico, que o contêiner não tem. Rodando
 por `scripts/sim.sh`, o firmware executa e o relatório sai no terminal, mas a
 tela não aparece. Para vê-la no Windows, rode o binário pelo WSL, que tem
@@ -110,6 +116,13 @@ comprovadamente não consegue exercitar ficam em
 [`tests/coverage-exclusions.json`](tests/coverage-exclusions.json), cada um com a
 justificativa — e o portão também reprova exclusão que deixou de ser necessária,
 para que a lista não vire depósito.
+
+A única categoria dispensada em bloco são os ramos internos dos macros de log
+do Zephyr: cada `LOG_INF` traz quatro ramos, dos quais dois nunca são tomados,
+e são decisões do macro e não de quem o escreveu. Registrá-los um a um seria
+uma lista indexada por número de linha, que se desatualiza na primeira edição
+do arquivo. A regra é estreita de propósito — a linha tem de ser **só** a
+chamada de log —, e uma linha de log que nunca executa continua reprovando.
 
 Relatório navegável em `build-out/coverage/index.html`.
 
@@ -160,7 +173,7 @@ na primeira seção do relatório, de propósito.
 | `west.yml` | Manifesto west. Zephyr fixado em v4.4.2, placa fora da árvore |
 | `prj.conf`, `app.overlay` | Configuração e devicetree comuns aos dois alvos |
 | `boards/` | O que é específico de cada alvo: `.conf` e `.overlay` por alvo |
-| `include/vitrolinha/` | Contratos compartilhados pelas três trilhas |
+| `include/vitrolinha/` | Cabeçalhos públicos dos módulos: os quatro contratos compartilhados pelas três trilhas, e o que mais atravessa arquivos |
 | `src/` | Implementação dos módulos e ponto de entrada. `src/CMakeLists.txt` é a única lista de fontes do projeto |
 | `tests/` | Um diretório por módulo, em `ztest` sobre `native_sim` |
 | `bench/` | Bancadas de medição. Aplicações Zephyr à parte, uma por pergunta |
