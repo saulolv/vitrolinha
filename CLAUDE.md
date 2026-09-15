@@ -477,9 +477,13 @@ tentativa no `prj.conf`.
 - Erro de tempo acumulado em 60 s de melodia: menor que 1%.
 - Desvio de início de cada nota: menor que 5 ms.
 - Latência botão -> efeito audível: menor que 100 ms, **incluindo seguinte e
-  anterior**, que exigem abrir e interpretar outro arquivo. Medir na E1; a
-  pré-carga das faixas vizinhas em buffers extras (12 KB, ainda fixos) só entra
-  se a medição exigir.
+  anterior**, que exigem abrir e interpretar outro arquivo. **Medido: a pior
+  faixa possível (4096 B) custa 10 setores em 4 chamadas, ~11,8 ms** — contra
+  60 ms de orçamento do armazenamento, e só estourando se o cartão passar de
+  5,8 ms por bloco. **A pré-carga das faixas vizinhas está descartada**
+  (`bench/rnf03/`, `docs/medicoes/rnf03-abertura-de-faixa.md`, ADR 0006). Falta
+  rodar a mesma bancada na placa, com `scripts/bench.sh --board`, para descartar
+  o laço de `k_msleep(10)` do `sdhc_spi` quando a resposta R1 do cartão demora.
 - Atualização da UI sem violar o desvio de nota acima.
 - Uso de RAM independente do tamanho do arquivo.
 - Sem travamento se o cartão for removido durante a reprodução.
@@ -498,7 +502,9 @@ avaliação — e `k_cycle_get_64()`, não a versão de 32 bits, que dá a volta
 - **E1** Validação do hardware: buzzer emitindo notas por PWM; **varredura de
   frequência para achar o limiar de resposta do piezo**; verificação da troca de
   nota quanto a estalo; encoder e botões lidos e **ordem física dos botões
-  identificada**; medição de `fs_open` + leitura, para o orçamento do RNF03.
+  identificada**; medição de `fs_open` + leitura, para o orçamento do RNF03 —
+  a contagem de setores já saiu no simulador (`bench/rnf03/`), falta rodar a
+  mesma bancada na placa com `scripts/bench.sh --board`.
 - **E2** LVGL no OLED com menu navegável pelo encoder (lista fixa).
 - **E3** Cartão montado e menu populado com os arquivos reais, nomes lidos do
   cabeçalho RTTTL.
