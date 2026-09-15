@@ -61,6 +61,35 @@ jobs:
         # tem de aparecer aqui e não na véspera de uma demonstração.
         run: west build -b native_sim/native/64 -d build-sim vitrolinha
 
+      - name: Compilar e rodar a bancada do RNF03
+        # A bancada mede o custo de abrir e ler uma faixa, e é a evidência da
+        # decisão de não pré-carregar as faixas vizinhas (ADR 0006). Rodar a
+        # cada push serve a duas coisas: o binário não apodrece, e qualquer
+        # mudança que aumente o número de setores por carga — ligar nomes
+        # longos, trocar a geometria do volume, mexer no storage — aparece no
+        # log aqui, e não numa releitura do relatório meses depois.
+        run: |
+          west build -b native_sim/native/64 -d build-bench vitrolinha/bench/rnf03
+          ./build-bench/zephyr/zephyr.exe | tee bench-rnf03.log
+          grep -q "Decisao: NAO pre-carregar" bench-rnf03.log || {
+            echo "FALHA: a bancada deixou de caber no orçamento do RNF03."
+            echo "Isso inverte a ADR 0006. Leia o relatório acima antes de mexer nela."
+            exit 1
+          }
+
+      - name: Compilar a bancada para a placa
+        # Não roda — só garante que o alvo de hardware continua compilando, que
+        # é o que permite medir de verdade na E1.
+        run: west build -b zbook@p2/rp2350b/m33 -d build-bench-zbook vitrolinha/bench/rnf03
+
+      - name: Publicar o relatório da bancada
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bancada-rnf03
+          path: bench-rnf03.log
+          if-no-files-found: warn
+
       - name: Publicar os artefatos
         uses: actions/upload-artifact@v4
         with:
