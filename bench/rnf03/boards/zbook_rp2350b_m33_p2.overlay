@@ -1,0 +1,14 @@
+/*
+ * Sobreposição da bancada na placa.
+ *
+ * Só o card-detect. Sem `cd-gpios`, `sdhc_spi_get_card_present` devolve 1
+ * incondicionalmente ("SPI has no card presence method, assume card is in
+ * slot") e a bancada acusaria um cartão que não está lá — medindo o caminho
+ * de erro no lugar do caminho de leitura.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+&sdhc0 {
+	cd-gpios = <&gpio0_hi 1 GPIO_ACTIVE_LOW>;
+};
