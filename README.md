@@ -22,6 +22,7 @@ scripts/setup.sh     # imagem + workspace west. Demora na primeira vez
 scripts/build.sh     # firmware para a placa -> build-out/zephyr.uf2
 scripts/sim.sh       # firmware no simulador, sem placa
 scripts/test.sh      # testes unitários + cobertura
+scripts/bench.sh     # bancada de medição do RNF03
 ```
 
 No Windows, rode pelo **Git Bash**. O `scripts/setup.sh` é idempotente: rodar de
@@ -129,6 +130,29 @@ Não há regra de qual diretório usar: `src/` é o layout convencional do Zephy
 é onde tudo mora. O que o `src/CMakeLists.txt` lista, os testes compilam; o
 `main.c` é acrescentado à parte, pelo `CMakeLists.txt` da raiz.
 
+## Bancadas de medição
+
+Os requisitos não funcionais são afirmações sobre número, e número sem medição é
+opinião. As bancadas ficam em `bench/`, fora de `src/` e fora de `tests/`: o
+resultado delas é um relatório para ler, não uma asserção que passa ou falha.
+
+```bash
+scripts/bench.sh              # RNF03 no simulador
+scripts/bench.sh --board      # o mesmo binário, para rodar na placa
+```
+
+| Bancada | Pergunta | Resultado |
+|---|---|---|
+| [`bench/rnf03/`](bench/rnf03/) | Quanto custa abrir e ler uma faixa do cartão? | [medição](docs/medicoes/rnf03-abertura-de-faixa.md) · [ADR 0006](docs/adr/0006-sem-pre-carga-de-faixas-vizinhas.md) |
+
+A do RNF03 vale como exemplo do que o simulador pode e não pode responder. Ela
+**mede** quantos setores o FatFs pede — software puro acima do `disk_access`,
+que vale igual na placa — e **modela** o tempo, com os bytes deduzidos do código
+do Zephyr e uma varredura de sensibilidade sobre o único termo que não é
+dedutível. O `native_sim` trata a execução de código como instantânea, então
+cronometrar trabalho de processador ali devolve zero; a bancada demonstra isso
+na primeira seção do relatório, de propósito.
+
 ## Organização do repositório
 
 | Caminho | O que é |
@@ -139,7 +163,8 @@ Não há regra de qual diretório usar: `src/` é o layout convencional do Zephy
 | `include/vitrolinha/` | Contratos compartilhados pelas três trilhas |
 | `src/` | Implementação dos módulos e ponto de entrada. `src/CMakeLists.txt` é a única lista de fontes do projeto |
 | `tests/` | Um diretório por módulo, em `ztest` sobre `native_sim` |
-| `scripts/` | Bancada: imagem, workspace, build da placa, simulador, testes, portão de cobertura |
+| `bench/` | Bancadas de medição. Aplicações Zephyr à parte, uma por pergunta |
+| `scripts/` | Ferramentas: imagem, workspace, build da placa, simulador, testes, portão de cobertura, bancadas |
 | `docker/` | Imagem enxuta de compilação |
 
 ## Documentos
@@ -150,6 +175,7 @@ Não há regra de qual diretório usar: `src/` é o layout convencional do Zephy
 | [`CLAUDE.md`](CLAUDE.md) | Plano de trabalho: pinos verificados, Kconfig, overlay, armadilhas, restrições de código |
 | [`CONTEXT.md`](CONTEXT.md) | Glossário do domínio. O mesmo termo com o mesmo sentido em código, issues e relatório |
 | [`docs/adr/`](docs/adr/) | Decisões de arquitetura, com as alternativas rejeitadas |
+| [`docs/medicoes/`](docs/medicoes/) | Resultado de cada bancada: o que foi medido, o que foi modelado, e o que se decidiu |
 
 Leia o `CLAUDE.md` antes de escrever a primeira linha. Ele lista as
 configurações que, se omitidas, quebram o projeto **em silêncio**.
