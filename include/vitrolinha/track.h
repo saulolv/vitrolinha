@@ -51,25 +51,25 @@ extern "C" {
  * necessário para desenhar a lista e para pedir a faixa ao `storage`.
  */
 struct track_meta {
-	/**
-	 * @brief Nome exibido, sempre terminado em NUL.
-	 *
-	 * Vem do **cabeçalho RTTTL**, não do nome do arquivo: sem
-	 * `CONFIG_FS_FATFS_LFN` a leitura de diretório devolve 8.3 em
-	 * maiúsculas (`FURELIS.TXT`), ruim numa tela cujo único texto é este.
-	 */
-	char name[TRACK_NAME_MAX];
+    /**
+     * @brief Nome exibido, sempre terminado em NUL.
+     *
+     * Vem do **cabeçalho RTTTL**, não do nome do arquivo: sem
+     * `CONFIG_FS_FATFS_LFN` a leitura de diretório devolve 8.3 em
+     * maiúsculas (`FURELIS.TXT`), ruim numa tela cujo único texto é este.
+     */
+    char name[TRACK_NAME_MAX];
 
-	/** @brief Posição na biblioteca, de 0 a LIBRARY_MAX-1. */
-	uint8_t index;
+    /** @brief Posição na biblioteca, de 0 a LIBRARY_MAX-1. */
+    size_t index;
 
-	/**
-	 * @brief Falso se o interpretador rejeitou o arquivo.
-	 *
-	 * A faixa continua listada, marcada com `!`, em vez de sumir sem
-	 * explicação.
-	 */
-	bool valid;
+    /**
+     * @brief Falso se o interpretador rejeitou o arquivo.
+     *
+     * A faixa continua listada, marcada com `!`, em vez de sumir sem
+     * explicação.
+     */
+    bool valid;
 };
 
 /**
@@ -92,7 +92,8 @@ struct track_meta {
  * @note Seguro com @p dst_size igual a zero (não escreve nada e devolve 0) e
  *       com @p src nulo (produz string vazia).
  */
-size_t track_name_copy(char *dst, size_t dst_size, const char *src, size_t src_len);
+size_t track_name_copy(char *dst, size_t dst_size, const char *src,
+                       size_t src_len);
 
 /**
  * @brief Preenche um @ref track_meta, garantindo suas invariantes.
@@ -107,8 +108,8 @@ size_t track_name_copy(char *dst, size_t dst_size, const char *src, size_t src_l
  * @param name_len Quantos bytes de @p name considerar.
  * @param valid Se o interpretador aceitou o arquivo.
  */
-void track_meta_init(struct track_meta *meta, uint8_t index, const char *name,
-		     size_t name_len, bool valid);
+void track_meta_init(struct track_meta *meta, size_t index, const char *name,
+                     size_t name_len, bool valid);
 
 #ifdef __cplusplus
 }

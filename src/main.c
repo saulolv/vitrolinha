@@ -18,6 +18,7 @@
 
 #include <vitrolinha/card.h>
 #include <vitrolinha/cmd.h>
+#include <vitrolinha/display.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/track.h>
@@ -25,6 +26,7 @@
 #include <app_version.h>
 
 #include <zephyr/devicetree.h>
+#include <zephyr/drivers/display.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -51,7 +53,8 @@ LOG_MODULE_REGISTER(vitrolinha, LOG_LEVEL_INF);
  * pino de header confirmado — daí valer a pena que o sinal de vida seja um
  * ponto único no código, fácil de mover.
  */
-static const struct gpio_dt_spec heartbeat = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
+static const struct gpio_dt_spec heartbeat =
+    GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 
 /**
  * @brief Prepara o LED de sinal de vida.
@@ -60,22 +63,21 @@ static const struct gpio_dt_spec heartbeat = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gp
  * @retval -ENODEV  O controlador de GPIO não inicializou.
  * @retval outro    Erro devolvido por `gpio_pin_configure_dt`.
  */
-static int heartbeat_init(void)
-{
-	int err;
+static int heartbeat_init(void) {
+    int err;
 
-	if (!gpio_is_ready_dt(&heartbeat)) {
-		LOG_ERR("GPIO do LED de sinal de vida nao esta pronto");
-		return -ENODEV;
-	}
+    if (!gpio_is_ready_dt(&heartbeat)) {
+        LOG_ERR("GPIO do LED de sinal de vida nao esta pronto");
+        return -ENODEV;
+    }
 
-	err = gpio_pin_configure_dt(&heartbeat, GPIO_OUTPUT_INACTIVE);
-	if (err != 0) {
-		LOG_ERR("Nao consegui configurar o LED: %d", err);
-		return err;
-	}
+    err = gpio_pin_configure_dt(&heartbeat, GPIO_OUTPUT_INACTIVE);
+    if (err != 0) {
+        LOG_ERR("Nao consegui configurar o LED: %d", err);
+        return err;
+    }
 
-	return 0;
+    return 0;
 }
 
 /**
@@ -86,9 +88,8 @@ static int heartbeat_init(void)
  *
  * @param state O estado novo.
  */
-static void card_changed(enum card_state state)
-{
-	LOG_INF("Cartao mudou para: %s", card_state_name(state));
+static void card_changed(enum card_state state) {
+    LOG_INF("Cartao mudou para: %s", card_state_name(state));
 }
 
 /**
@@ -97,23 +98,22 @@ static void card_changed(enum card_state state)
  * Ausência de cartão não é falha de inicialização: a placa continua ligando,
  * e o monitor passa a avisar se um cartão aparecer.
  */
-static void card_report(void)
-{
-	int err;
+static void card_report(void) {
+    int err;
 
-	/* Observar antes de inicializar, para não perder a transição de quem
-	 * liga a placa com o cartão já no soquete.
-	 */
-	card_observe(card_changed);
+    /* Observar antes de inicializar, para não perder a transição de quem
+     * liga a placa com o cartão já no soquete.
+     */
+    card_observe(card_changed);
 
-	err = card_init();
-	if (err != 0) {
-		LOG_ERR("Monitor do cartao nao subiu: %d", err);
-		return;
-	}
+    err = card_init();
+    if (err != 0) {
+        LOG_ERR("Monitor do cartao nao subiu: %d", err);
+        return;
+    }
 
-	LOG_INF("Cartao: %s (ponto de montagem %s)", card_state_name(card_get_state()),
-		CARD_MOUNT_POINT);
+    LOG_INF("Cartao: %s (ponto de montagem %s)",
+            card_state_name(card_get_state()), CARD_MOUNT_POINT);
 }
 
 /**
@@ -127,37 +127,36 @@ static void card_report(void)
  *
  * @return Quantidade de faixas encontradas, ou erro negativo do contrato.
  */
-static int library_report(void)
-{
-	static struct track_meta library[LIBRARY_MAX];
-	static uint8_t buf[STORAGE_FILE_MAX];
-	int count;
+static int library_report(void) {
+    static struct track_meta library[LIBRARY_MAX];
+    static uint8_t buf[STORAGE_FILE_MAX];
+    int count;
 
-	LOG_INF("Faixas embutidas: %s",
-		storage_present() ? "disponiveis" : "indisponiveis");
+    LOG_INF("Faixas embutidas: %s",
+            storage_present() ? "disponiveis" : "indisponiveis");
 
-	count = storage_scan(library, ARRAY_SIZE(library));
-	if (count < 0) {
-		LOG_ERR("Varredura falhou: %d", count);
-		return count;
-	}
+    count = storage_scan(library, ARRAY_SIZE(library));
+    if (count < 0) {
+        LOG_ERR("Varredura falhou: %d", count);
+        return count;
+    }
 
-	LOG_INF("Biblioteca: %d faixa(s)", count);
+    LOG_INF("Biblioteca: %d faixa(s)", count);
 
-	for (int i = 0; i < count; i++) {
-		int size = storage_load(i, buf, sizeof(buf));
+    for (int i = 0; i < count; i++) {
+        int size = storage_load(i, buf, sizeof(buf));
 
-		if (size < 0) {
-			LOG_WRN("  [%u] %-16s  carga falhou: %d", library[i].index,
-				library[i].name, size);
-			continue;
-		}
+        if (size < 0) {
+            LOG_WRN("  [%u] %-16s  carga falhou: %d", library[i].index,
+                    library[i].name, size);
+            continue;
+        }
 
-		LOG_INF("  [%u] %-16s  %d bytes%s", library[i].index, library[i].name,
-			size, library[i].valid ? "" : "  (invalida)");
-	}
+        LOG_INF("  [%u] %-16s  %d bytes%s", library[i].index, library[i].name,
+                size, library[i].valid ? "" : "  (invalida)");
+    }
 
-	return count;
+    return count;
 }
 
 /**
@@ -167,22 +166,21 @@ static int library_report(void)
  * `ui` usará, para conferir que a conversão de decorrido e de progresso
  * está de pé antes de existir tela.
  */
-static void snapshot_report(void)
-{
-	const struct player_snapshot playing = {
-		.state = PLAYER_PLAYING,
-		.base_us = 0U,
-		.total_us = 60U * USEC_PER_SEC,
-		.track = 0,
-	};
-	struct player_snapshot copy;
+static void snapshot_report(void) {
+    const struct player_snapshot playing = {
+        .state = PLAYER_PLAYING,
+        .base_us = 0U,
+        .total_us = 60U * USEC_PER_SEC,
+        .track = 0,
+    };
+    struct player_snapshot copy;
 
-	snapshot_publish(&playing);
-	snapshot_read(&copy);
+    snapshot_publish(&playing);
+    snapshot_read(&copy);
 
-	LOG_INF("Instantaneo: faixa %d, %u us de %u us (%u/1000)", copy.track,
-		snapshot_elapsed_us(&copy, 30U * USEC_PER_SEC), copy.total_us,
-		snapshot_progress_permille(&copy, 30U * USEC_PER_SEC));
+    LOG_INF("Instantaneo: faixa %d, %u us de %u us (%u/1000)", copy.track,
+            snapshot_elapsed_us(&copy, 30U * USEC_PER_SEC), copy.total_us,
+            snapshot_progress_permille(&copy, 30U * USEC_PER_SEC));
 }
 
 /**
@@ -191,51 +189,54 @@ static void snapshot_report(void)
  * Publica e consome um comando pela fila real, no mesmo sentido em que
  * `input` e `player` vão usá-la.
  */
-static void cmd_report(void)
-{
-	struct cmd received;
-	int err;
+static void cmd_report(void) {
+    struct cmd received;
+    int err;
 
-	cmd_flush();
+    cmd_flush();
 
-	err = cmd_post(CMD_SELECT, 1);
-	if (err != 0) {
-		LOG_ERR("Nao consegui enfileirar comando: %d", err);
-		return;
-	}
+    err = cmd_post(CMD_SELECT, 1);
+    if (err != 0) {
+        LOG_ERR("Nao consegui enfileirar comando: %d", err);
+        return;
+    }
 
-	err = cmd_get(&received, K_NO_WAIT);
-	if (err != 0) {
-		LOG_ERR("Nao consegui retirar comando: %d", err);
-		return;
-	}
+    err = cmd_get(&received, K_NO_WAIT);
+    if (err != 0) {
+        LOG_ERR("Nao consegui retirar comando: %d", err);
+        return;
+    }
 
-	LOG_INF("Comando: %s faixa %d", cmd_kind_name((enum cmd_kind)received.kind),
-		received.track);
+    LOG_INF("Comando: %s faixa %d", cmd_kind_name((enum cmd_kind)received.kind),
+            received.track);
 }
 
-int main(void)
-{
-	int err;
+int main(void) {
+    int err;
 
-	LOG_INF("Vitrolinha %s em " CONFIG_BOARD_TARGET, APP_VERSION_STRING);
+    LOG_INF("Vitrolinha %s em " CONFIG_BOARD_TARGET, APP_VERSION_STRING);
 
-	err = heartbeat_init();
-	if (err != 0) {
-		return err;
-	}
+    err = heartbeat_init();
+    if (err != 0) {
+        return err;
+    }
 
-	card_report();
-	(void)library_report();
-	snapshot_report();
-	cmd_report();
+    err = display_init();
+    if (err != 0) {
+        return err;
+    }
 
-	LOG_INF("Bring-up completo. LED de sinal de vida piscando.");
+    card_report();
+    (void)library_report();
+    snapshot_report();
+    cmd_report();
 
-	while (true) {
-		(void)gpio_pin_toggle_dt(&heartbeat);
-		k_sleep(HEARTBEAT_PERIOD);
-	}
+    LOG_INF("Bring-up completo. LED de sinal de vida piscando.");
 
-	return 0;
+    while (true) {
+        (void)gpio_pin_toggle_dt(&heartbeat);
+        k_sleep(HEARTBEAT_PERIOD);
+    }
+
+    return 0;
 }

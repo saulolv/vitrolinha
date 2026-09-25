@@ -54,6 +54,10 @@ void storage_fake_set_failing(bool failing);
  */
 void storage_fake_reset(void);
 
+/**
+ * @brief Retorna o nome de uma música;
+ */
+void fake_storage_get_name(struct track_meta *meta, uint8_t index);
 #ifdef __cplusplus
 }
 #endif

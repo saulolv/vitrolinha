@@ -10,6 +10,7 @@
  */
 
 #include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/lvgl/lvgl.h>
 
 /*
  * A tela, no tamanho real do OLED.
@@ -99,7 +100,7 @@
 	 * aqui, e src/sim_encoder.c as converte em INPUT_REL_WHEEL, que é o
 	 * que o indev do LVGL de fato consome.
 	 */
-	encoder {
+	encoder: encoder {
 		compatible = "gpio-keys";
 		debounce-interval-ms = <20>;
 
@@ -121,4 +122,21 @@
 			label = "Encoder horario (seta direita)";
 		};
 	};
+    lvgl_keypad: lvgl_keypad {
+        compatible = "zephyr,lvgl-keypad-input";
+
+        input = <&encoder>;
+
+        input-codes = <
+            INPUT_KEY_LEFT
+            INPUT_KEY_RIGHT
+            INPUT_KEY_ENTER
+        >;
+
+        lvgl-codes = <
+            LV_KEY_LEFT
+            LV_KEY_RIGHT
+            LV_KEY_ENTER
+        >;
+    };
 };

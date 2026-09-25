@@ -24,6 +24,7 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/seqlock.c
   ${CMAKE_CURRENT_LIST_DIR}/snapshot.c
   ${CMAKE_CURRENT_LIST_DIR}/track.c
+  ${CMAKE_CURRENT_LIST_DIR}/display.c
 )
 
 # Implementação de mentira do storage: duas faixas embutidas no binário.
