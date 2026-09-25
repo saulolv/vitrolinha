@@ -6,6 +6,7 @@ modules/
 bootloader/
 tools/
 twister-out*/
+.cache
 
 # Artefatos copiados do contêiner: firmware gravável e relatório de cobertura
 build-out/
