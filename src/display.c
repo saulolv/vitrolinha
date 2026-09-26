@@ -1,13 +1,7 @@
 #include "stdlib/lv_string.h"
 #include "vitrolinha/storage.h"
 #include "vitrolinha/track.h"
-#include "widgets/bar/lv_bar.h"
-#include "widgets/label/lv_label.h"
-#include "widgets/roller/lv_roller.h"
 #include "zephyr/device.h"
-#include "zephyr/fatal_types.h"
-#include <stdint.h>
-#include <string.h>
 #include <vitrolinha/display.h>
 #include <vitrolinha/storage_fake.h>
 
@@ -18,8 +12,10 @@
 
 #define ENCODER_SIM DT_NODELABEL(lvgl_keypad)
 
-typedef struct {
+// For testing fps and board throughput
+/* #define TEST_FPS */
 
+typedef struct {
     lv_obj_t *label;
     lv_obj_t *bar;
 } cb_data;
@@ -32,7 +28,6 @@ static const struct device *const encoder_dev = DEVICE_DT_GET(ENCODER_SIM);
 
 LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
 
-/* #define TEST_FPS */
 /** @brief Dispositivo do display, resolvido pelo `chosen zephyr,display`. */
 static const struct device *const display_dev =
     DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
@@ -254,6 +249,10 @@ static int get_name_content(char *name,
         lv_strcat(name, trackMeta.name);
         lv_strcat(name, "\n");
     }
+
+    name[lv_strnlen(name, 1000) - 1] =
+        '\0'; // TODO remove this part to use real music data from sd card
+
     return 0;
 }
 
@@ -288,6 +287,9 @@ static void screen_init() {
 
 // TODO after memory card support this function will change. Some parts will
 // need to run inside main loop
+// TODO bug where scroll animation stops when music is selected too fast.
+// Solution: event queue or delay (depends if we'll implement mp3 to PCM
+// decoder).
 static void app(void) {
 
     static lv_style_t style_roller_main;
