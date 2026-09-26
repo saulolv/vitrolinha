@@ -1,10 +1,13 @@
-#include "misc/lv_event.h"
+#include "stdlib/lv_string.h"
 #include "vitrolinha/storage.h"
 #include "vitrolinha/track.h"
+#include "widgets/bar/lv_bar.h"
+#include "widgets/label/lv_label.h"
 #include "widgets/roller/lv_roller.h"
 #include "zephyr/device.h"
 #include "zephyr/fatal_types.h"
 #include <stdint.h>
+#include <string.h>
 #include <vitrolinha/display.h>
 #include <vitrolinha/storage_fake.h>
 
@@ -14,6 +17,15 @@
 #include <zephyr/logging/log.h>
 
 #define ENCODER_SIM DT_NODELABEL(lvgl_keypad)
+
+typedef struct {
+
+    lv_obj_t *label;
+    lv_obj_t *bar;
+} cb_data;
+
+// Timer for music progress animation
+static lv_timer_t *bar_timer;
 
 // Encoder
 static const struct device *const encoder_dev = DEVICE_DT_GET(ENCODER_SIM);
@@ -143,7 +155,8 @@ int display_init(void) {
     lv_timer_handler();
 
 #else
-    lv_music_roller();
+    screen_init();
+    app();
 #endif
 
     lvgl_unlock();
@@ -159,67 +172,78 @@ int display_init(void) {
     return 0;
 }
 
-static void btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *btn = lv_event_get_target_obj(e);
-    if (code == LV_EVENT_CLICKED) {
-        static uint8_t cnt = 0;
-        cnt++;
+static void reset_bar_timer(lv_obj_t *bar) {
 
-        /*Get the first child of the button which is the label and change its
-         * text*/
-        lv_obj_t *label = lv_obj_get_child(btn, 0);
-        lv_label_set_text_fmt(label, "Button: %d", cnt);
+    lv_timer_reset(bar_timer);
+    lv_timer_pause(bar_timer);
+    lv_bar_set_value(bar, 0, false);
+}
+
+static void bar_timer_cb(lv_timer_t *timer) {
+
+    lv_obj_t *bar = lv_timer_get_user_data(timer);
+    int32_t current_value = lv_bar_get_value(bar);
+    if (current_value + 5 > 100) {
+        reset_bar_timer(bar);
+        return;
     }
+    lv_bar_set_value(bar, current_value + 5, true);
 }
-
-/**
- * @title Button with click counter
- * @brief Increment a label on a button each time it is clicked.
- *
- * A button sized 120x50 is placed at position (10, 10) on the active screen
- * with a centered label reading `Button`. The button subscribes to
- * `LV_EVENT_ALL` and on `LV_EVENT_CLICKED` the callback updates its child
- * label with `lv_label_set_text_fmt` to show an incrementing counter.
- */
-void lv_example_get_started_button(void) {
-    lv_obj_t *btn = lv_button_create(
-        lv_screen_active());       /*Add a button the current screen*/
-    lv_obj_set_pos(btn, 10, 10);   /*Set its position*/
-    lv_obj_set_size(btn, 120, 50); /*Set its size*/
-    lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_ALL,
-                        NULL); /*Assign a callback to the button*/
-
-    lv_obj_t *label = lv_label_create(btn); /*Add a label to the button*/
-    lv_label_set_text(label, "Button");     /*Set the labels text*/
-    lv_obj_center(label);
-}
-
+#define BUFFER_SIZE 64
 static void event_cb(lv_event_t *e) {
 
-    lv_obj_t *music_label = lv_event_get_user_data(e);
+    cb_data *data = lv_event_get_user_data(e);
+    lv_obj_t *music_label = data->label;
+    lv_obj_t *bar = data->bar; // TODO reflect real music state
+
     lv_obj_t *roller = lv_event_get_target_obj(e);
     lv_indev_t *indev = lv_indev_get_act();
 
+    char buf[BUFFER_SIZE];
+
+    const char playing_music[BUFFER_SIZE];
+    const char *text_ref = lv_label_get_text(music_label);
+    const int32_t size_title = lv_strnlen(text_ref, BUFFER_SIZE);
+    lv_strlcpy(playing_music, text_ref, BUFFER_SIZE);
+
     LOG_INF("Key entered: %d", lv_indev_get_key(indev));
+    /* LOG_INF("Current Music: %s", lv_label_get_text(music_label)); */
 
-    if (lv_indev_get_state(indev) == LV_INDEV_STATE_PRESSED) {
+    if (lv_indev_get_key(indev) == LV_KEY_ENTER) {
 
-        if (lv_indev_get_key(indev) == LV_KEY_ENTER) {
+        lv_roller_get_selected_str(roller, buf, sizeof(buf));
+        LOG_INF("Buffer: %s\n", buf);
+        /* LV_LOG_USER("roller: selected %u (\"%s\")", */
+        /*             (unsigned)lv_roller_get_selected(roller), buf); */
 
-            char buf[32];
-            lv_roller_get_selected_str(roller, buf, sizeof(buf));
-            LV_LOG_USER("roller: selected %u (\"%s\")",
-                        (unsigned)lv_roller_get_selected(roller), buf);
+        lv_label_set_text_fmt(music_label, "%s", buf);
 
-            lv_label_set_text_fmt(music_label, "%s", buf);
+        LOG_INF("Buffer after: %s\n", playing_music);
+
+        if (!bar_timer) {
+
+            bar_timer = lv_timer_create(bar_timer_cb, 500, bar);
+            return;
+        }
+
+        if (lv_strcmp(playing_music, buf)) {
+
+            reset_bar_timer(bar);
+        }
+
+        if (lv_timer_get_paused(bar_timer)) {
+            lv_timer_resume(bar_timer);
+        } else {
+
+            lv_timer_pause(bar_timer);
         }
     }
 }
 
-struct track_meta trackMeta;
 static int get_name_content(char *name,
                             uint8_t **content) { // TODO use real data
+
+    struct track_meta trackMeta;
     for (size_t i = 0; i < STORAGE_FAKE_TRACK_COUNT; i++) {
         int file_size = storage_load(i, content[i], STORAGE_FILE_MAX);
         if (file_size > (int)STORAGE_FILE_MAX) {
@@ -233,67 +257,96 @@ static int get_name_content(char *name,
     return 0;
 }
 
-static void lv_music_roller(void) {
+static lv_obj_t *create_flex_container(lv_obj_t *parent) {
 
-    lv_style_t style_roller_main;
-    lv_style_t style_roller_selected;
+    lv_obj_t *container = lv_obj_create(parent);
 
-    char names[1000]; // TODO change allocation (used only for tests)
-    uint8_t *content[STORAGE_FILE_MAX];
-    if (get_name_content(names, content)) {
-        LOG_ERR("File too large");
-    }
+    lv_obj_set_width(container, LV_HOR_RES - 5);
+    lv_obj_set_height(container, 25);
+
+    lv_obj_set_scrollbar_mode(container, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(container, 3, 0);
+
+    return container;
+}
+
+static void screen_init() {
+
+    lv_obj_t *screen = lv_screen_active();
+    lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_flex_main_place(screen, LV_FLEX_ALIGN_CENTER, 0);
+    lv_obj_set_style_flex_cross_place(screen, LV_FLEX_ALIGN_CENTER, 0);
+    lv_obj_set_style_flex_track_place(screen, LV_FLEX_ALIGN_CENTER, 0);
+    lv_obj_set_style_pad_row(screen, 3, 0);
+}
+
+// TODO after memory card support this function will change. Some parts will
+// need to run inside main loop
+static void app(void) {
+
+    static lv_style_t style_roller_main;
+    static lv_style_t style_roller_selected;
+    static lv_style_t style_bar;
+    static lv_style_t style_container;
+
+    static char names[1000]; // TODO change allocation (used only for tests)
     LOG_INF("Name: %s", names);
 
     static bool inited = false;
 
     if (!inited) {
+
+        uint8_t *content[STORAGE_FILE_MAX];
+        if (get_name_content(names, content)) {
+            LOG_ERR("File too large");
+        }
+
         lv_style_init(&style_roller_main);
-        lv_style_set_bg_color(&style_roller_main, lv_color_hex(0xf3f4f6));
-        lv_style_set_bg_opa(&style_roller_main, (255 * 100 / 100));
+        lv_style_set_bg_color(&style_roller_main, lv_color_hex(0xffffff));
         lv_style_set_radius(&style_roller_main, 12);
-        lv_style_set_border_color(&style_roller_main, lv_color_hex(0xd1d5db));
-        lv_style_set_border_width(&style_roller_main, 1);
-        lv_style_set_text_color(&style_roller_main, lv_color_hex(0x6b7280));
-        lv_style_set_text_line_space(&style_roller_main, 3);
+        lv_style_set_border_opa(&style_roller_main, 0);
+        lv_style_set_text_color(&style_roller_main, lv_color_hex(0x000000));
+        lv_style_set_text_line_space(&style_roller_main, 2);
 
         lv_style_init(&style_roller_selected);
-        lv_style_set_bg_color(&style_roller_selected, lv_color_hex(0x6366f1));
-        lv_style_set_bg_opa(&style_roller_selected, (255 * 100 / 100));
+        lv_style_set_bg_color(&style_roller_selected, lv_color_hex(0x000000));
         lv_style_set_text_color(&style_roller_selected, lv_color_hex(0xffffff));
         /* lv_style_set_text_font(&style_roller_selected, &font_example_large);
          */
+
+        lv_style_init(&style_bar);
+        lv_style_set_radius(&style_bar, 12);
+
+        lv_style_init(&style_container);
+        lv_style_set_border_opa(&style_container, 0);
 
         inited = true;
     }
 
     lv_obj_t *screen = lv_screen_active();
-    lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_flex_main_place(screen, LV_FLEX_ALIGN_CENTER, 0);
-    lv_obj_set_style_flex_cross_place(screen, LV_FLEX_ALIGN_CENTER, 0);
-    lv_obj_set_style_flex_track_place(screen, LV_FLEX_ALIGN_CENTER, 0);
-    lv_obj_set_style_pad_row(screen, 5, 0);
-
     /* 💡 Bump `text_line_space` on `style_roller_main` to grow the selected
      * band's height — the indicator always fills the gap between rows. */
     lv_obj_t *roller = lv_roller_create(screen);
     lv_obj_set_width(roller, LV_HOR_RES - 10);
-    lv_roller_set_visible_row_count(roller, 3);
+    lv_obj_set_height(roller, LV_VER_RES * 0.55);
+    lv_roller_set_visible_row_count(roller, 2);
     lv_roller_set_options(roller, names, LV_ROLLER_MODE_NORMAL);
     lv_roller_set_selected(roller, 2, false);
     lv_obj_add_style(roller, &style_roller_main, LV_PART_MAIN);
     lv_obj_add_style(roller, &style_roller_selected, LV_PART_SELECTED);
 
+    lv_obj_t *container = create_flex_container(screen);
+    lv_obj_add_style(container, &style_container, LV_PART_MAIN);
     // Music label in the bottom
-    lv_obj_t *music_label = lv_label_create(screen);
-    lv_obj_align(music_label, LV_ALIGN_CENTER, 0, -20);
+    lv_obj_t *music_label = lv_label_create(container);
     lv_obj_set_style_text_font(music_label, &lv_font_unscii_8, 0);
     lv_label_set_text(music_label, "Nothing Playing");
-
-    /* lv_obj_add_event_cb(roller, event_cb, LV_EVENT_VALUE_CHANGED, NULL); */
-    lv_obj_add_event_cb(roller, event_cb, LV_EVENT_KEY,
-                        music_label); // Has to be after label to get user data
 
     /* Add roller into indev_group to get input from key by making it focused */
     lv_group_t *group = lv_group_create();
@@ -302,4 +355,16 @@ static void lv_music_roller(void) {
 
     lv_group_add_obj(group, roller);
     lv_group_focus_obj(roller);
+
+    lv_obj_t *bar = lv_bar_create(container);
+    lv_obj_set_size(bar, lv_pct(90), 8);
+    lv_bar_set_min_value(bar, 0);
+    lv_bar_set_max_value(bar, 100);
+    lv_obj_add_style(bar, &style_bar, LV_PART_MAIN);
+
+    // Create struct for passing data to event callback linked to roller
+    cb_data data = {music_label, bar};
+
+    lv_obj_add_event_cb(roller, event_cb, LV_EVENT_KEY,
+                        &data); // Has to be after label to get user data
 }

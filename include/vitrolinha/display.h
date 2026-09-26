@@ -17,8 +17,8 @@
  * @return 0 em caso de sucesso.
  * @return Valor negativo em caso de erro.
  */
-static void lv_music_roller(void);
+static void app(void);
+static void screen_init(void);
 int display_init(void);
-void lv_example_get_started_button(void);
 
 #endif // DISPLAY_H_
