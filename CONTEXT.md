@@ -24,8 +24,9 @@ do arquivo no sistema de arquivos.
 _Avoid_: título, nome do arquivo
 
 **Faixa inválida**:
-Faixa que existe na biblioteca mas que o interpretador rejeitou. Continua
-listada, marcada com `!`.
+Faixa que existe na biblioteca mas que o interpretador rejeitou, ou que a
+varredura já recusou: cabeçalho ilegível, arquivo vazio ou maior que o buffer
+de faixa. Continua listada, marcada com `!`.
 _Avoid_: faixa corrompida, faixa quebrada, erro de faixa
 
 **Cartão**:
