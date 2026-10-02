@@ -31,20 +31,6 @@
 LOG_MODULE_REGISTER(card, LOG_LEVEL_INF);
 
 /**
- * @brief Nome do disco, que é o ponto de montagem sem a barra.
- *
- * O subsistema de arquivos quer `"/SD"`, o `disk_access` quer `"SD"`, e o
- * `disk-name` do nó `sdhc0` é o segundo. Derivar um do outro evita a classe
- * de erro em que os dois deixam de casar e a montagem falha sem que nada no
- * código pareça errado.
- *
- * O `+ 1` pula a barra. Que ela exista é invariante do ::CARD_MOUNT_POINT, e
- * não é verificável em `BUILD_ASSERT`: indexar um literal de string não é
- * expressão constante em C.
- */
-#define CARD_DISK_NAME (CARD_MOUNT_POINT + 1)
-
-/**
  * @brief Intervalo entre duas olhadas no pino de detecção.
  *
  * O pino de card-detect não tem interrupção: o `sdhc_spi` o configura como

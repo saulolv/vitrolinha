@@ -31,14 +31,26 @@ extern "C" {
 #endif
 
 /**
- * @brief Ponto de montagem do cartão.
+ * @brief Nome do disco do cartão no `disk_access`.
  *
- * O `disk-name` do nó `sdhc0` da ZBook é `"SD"`, e o subsistema de arquivos
- * exige a barra inicial. No alvo de simulação o mesmo nome chega por
- * `CONFIG_FS_FATFS_CUSTOM_MOUNT_POINTS`, para que o caminho seja idêntico nos
- * dois alvos.
+ * É o `disk-name` do nó `sdhc0` da ZBook. No alvo de simulação o mesmo nome
+ * chega por `CONFIG_FS_FATFS_CUSTOM_MOUNT_POINTS`, para que o caminho seja
+ * idêntico nos dois alvos.
  */
-#define CARD_MOUNT_POINT "/SD"
+#define CARD_DISK_NAME "SD"
+
+/**
+ * @brief Ponto de montagem do cartão, prefixo de todo caminho dentro dele.
+ *
+ * Derivado de ::CARD_DISK_NAME, para que os dois não possam deixar de casar.
+ * A barra é exigência do subsistema de arquivos; os **dois-pontos** são do
+ * FatFs, e não são enfeite. O Zephyr entrega ao FatFs o caminho sem a barra,
+ * e o FatFs só reconhece o volume pelo prefixo `SD:`. Sem ele a montagem
+ * ainda funciona — cai no volume padrão —, mas `SD/FURELIS.TXT` é lido como
+ * o arquivo `FURELIS.TXT` dentro de um diretório `SD` que não existe, e
+ * nenhum arquivo do cartão abre.
+ */
+#define CARD_MOUNT_POINT "/" CARD_DISK_NAME ":"
 
 /**
  * @brief Os três estados do cartão.

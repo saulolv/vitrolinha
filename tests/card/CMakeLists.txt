@@ -6,7 +6,10 @@ project(vitrolinha_card_test LANGUAGES C)
 
 include(${CMAKE_CURRENT_LIST_DIR}/../vitrolinha_test.cmake)
 
+# O disco de mentira mora em tests/common/: o storage_card o usa também.
+target_include_directories(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../common)
+
 target_sources(app PRIVATE
-  src/fake_disk.c
+  ${CMAKE_CURRENT_LIST_DIR}/../common/fake_disk.c
   src/main.c
 )

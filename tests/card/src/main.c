@@ -20,6 +20,7 @@
 #include <errno.h>
 #include <string.h>
 
+#include <zephyr/fs/fs.h>
 #include <zephyr/kernel.h>
 #include <zephyr/ztest.h>
 
@@ -391,12 +392,27 @@ ZTEST(card, test_nome_de_estado_fora_da_enumeracao)
 	zassert_str_equal("desconhecido", card_state_name((enum card_state)99));
 }
 
-ZTEST(card, test_ponto_de_montagem_comeca_com_barra)
+ZTEST(card, test_ponto_de_montagem_e_o_volume_do_fatfs)
 {
-	/* O módulo deriva o nome do disco do ponto de montagem, pulando o
-	 * primeiro byte. Se a barra sumir, o `disk_access` passa a ser
-	 * procurado por "D" e nada monta.
+	/* A barra é do subsistema de arquivos, os dois-pontos são do FatFs, e
+	 * o nome no meio é o do disco.
 	 */
-	zassert_equal('/', CARD_MOUNT_POINT[0]);
-	zassert_str_equal("SD", &CARD_MOUNT_POINT[1]);
+	zassert_str_equal("SD", CARD_DISK_NAME);
+	zassert_str_equal("/SD:", CARD_MOUNT_POINT);
+}
+
+ZTEST(card, test_volume_montado_e_navegavel)
+{
+	struct fs_dir_t dir;
+
+	/* Montar não basta: sem os dois-pontos no ponto de montagem, o
+	 * fs_mount dá certo e todo caminho dentro do volume falha. Este é o
+	 * caso que só um acesso de verdade pega.
+	 */
+	fake_disk_insert(true);
+	zassert_equal(CARD_READY, settle(CARD_READY));
+
+	fs_dir_t_init(&dir);
+	zassert_ok(fs_opendir(&dir, CARD_MOUNT_POINT), "o volume montou mas nao abre");
+	zassert_ok(fs_closedir(&dir));
 }

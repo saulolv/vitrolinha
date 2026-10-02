@@ -144,9 +144,9 @@ static const struct disk_operations fake_ops = {
 
 static struct disk_info fake_disk = {
 	/* O mesmo nome do `disk-name` do nó `sdhc0`, que é o que o módulo sob
-	 * teste deriva de CARD_MOUNT_POINT.
+	 * teste procura.
 	 */
-	.name = CARD_MOUNT_POINT + 1,
+	.name = CARD_DISK_NAME,
 	.ops = &fake_ops,
 };
 
@@ -158,8 +158,8 @@ int fake_disk_setup(void)
 	fake_disk_register(true);
 
 	/* Formatar exige cartão no soquete. O `dev_id` do FatFs é a string do
-	 * volume, sem a barra inicial que o subsistema de arquivos exige no
-	 * ponto de montagem.
+	 * volume com os dois-pontos (`"SD:"`), sem a barra inicial que o
+	 * subsistema de arquivos exige no ponto de montagem.
 	 */
 	inserted = true;
 
@@ -172,7 +172,7 @@ int fake_disk_setup(void)
 	 * contagem de referências aqui é o que faz cada teste começar do mesmo
 	 * lugar, em vez de herdar um `+1` do preparo.
 	 */
-	(void)disk_access_ioctl(CARD_MOUNT_POINT + 1, DISK_IOCTL_CTRL_DEINIT, &force);
+	(void)disk_access_ioctl(CARD_DISK_NAME, DISK_IOCTL_CTRL_DEINIT, &force);
 
 	fake_disk_reset();
 
