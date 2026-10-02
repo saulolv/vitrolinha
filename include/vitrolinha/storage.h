@@ -46,17 +46,33 @@ extern "C" {
 /**
  * @brief Varre a biblioteca e preenche os metadados das faixas encontradas.
  *
- * @param out Vetor de destino, com pelo menos @p max posições.
- * @param max Capacidade de @p out. Valores acima de ::LIBRARY_MAX são
- *            tratados como ::LIBRARY_MAX.
+ * As faixas saem na ordem em que a origem as guarda — no cartão, a ordem do
+ * diretório, que é a ordem em que os arquivos foram copiados. É essa ordem
+ * que dá sentido a "o 33.º arquivo é ignorado".
+ *
+ * Toda varredura substitui a biblioteca anterior: os índices passados a
+ * @ref storage_load passam a valer para esta. Uma varredura que falha deixa a
+ * biblioteca **vazia**, e @p out pode ter sido escrito em parte.
+ *
+ * @param out     Vetor de destino, com pelo menos @p max posições.
+ * @param max     Capacidade de @p out. Valores acima de ::LIBRARY_MAX são
+ *                tratados como ::LIBRARY_MAX.
+ * @param skipped Se não nulo, recebe quantas faixas existiam mas não couberam
+ *                em @p out — é o número que a tela mostra no aviso de
+ *                biblioteca cheia. Zerado antes de qualquer retorno, inclusive
+ *                de erro.
  *
  * @return Quantidade de faixas escritas em @p out, de 0 a
  *         `min(max, LIBRARY_MAX)`, ou um erro negativo:
  * @retval -EINVAL @p out nulo ou @p max igual a zero.
  * @retval -ENODEV Sem cartão.
  * @retval -EIO    O cartão está presente mas não pôde ser lido.
+ *
+ * @warning **Bloqueia.** No cartão, abre cada arquivo para ler o cabeçalho, e
+ *          pode esperar uma montagem em curso. Chamar de thread de prioridade
+ *          baixa, nunca da `player`.
  */
-int storage_scan(struct track_meta *out, size_t max);
+int storage_scan(struct track_meta *out, size_t max, size_t *skipped);
 
 /**
  * @brief Carrega uma faixa inteira para a memória.

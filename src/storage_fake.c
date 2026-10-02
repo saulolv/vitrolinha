@@ -7,9 +7,10 @@
  * tornar reproduzíveis os caminhos de falha, que com hardware de verdade
  * dependem de alguém puxar o cartão na hora certa.
  *
- * Este arquivo é substituído pelo storage do cartão (issues #10 e #11),
- * que se apoia no módulo `card`. Quando isso acontecer, nenhum chamador
- * muda — é o que a fronteira do @ref storage.h compra.
+ * Na placa quem responde é o storage do cartão (`storage.c`), que se apoia
+ * no módulo `card`; aqui fica o simulador, que não tem disco. A escolha é do
+ * `CONFIG_VITROLINHA_STORAGE`, e nenhum chamador sabe qual das duas está no
+ * binário — é o que a fronteira do @ref storage.h compra.
  */
 
 #include <vitrolinha/storage.h>
@@ -22,9 +23,9 @@
 /**
  * @brief Uma faixa embutida no binário.
  *
- * O nome fica ao lado do conteúdo em vez de ser extraído do cabeçalho: ler o
- * cabeçalho RTTTL é trabalho do interpretador (issue #10), e antecipá-lo
- * aqui seria manter duas cópias da mesma regra até lá.
+ * O nome fica ao lado do conteúdo em vez de ser extraído do cabeçalho: a regra
+ * de leitura do cabeçalho mora em `storage.c`, e repeti-la aqui seria manter
+ * duas cópias dela.
  */
 struct fake_track {
 	const char *name;
@@ -95,10 +96,14 @@ void storage_fake_reset(void)
 	fake_failing = false;
 }
 
-int storage_scan(struct track_meta *out, size_t max)
+int storage_scan(struct track_meta *out, size_t max, size_t *skipped)
 {
 	int status;
 	size_t count;
+
+	if (skipped != NULL) {
+		*skipped = 0U;
+	}
 
 	if ((out == NULL) || (max == 0U)) {
 		return -EINVAL;
@@ -121,6 +126,10 @@ int storage_scan(struct track_meta *out, size_t max)
 	for (size_t i = 0U; i < count; i++) {
 		track_meta_init(&out[i], (uint8_t)i, fake_tracks[i].name,
 				strlen(fake_tracks[i].name), true);
+	}
+
+	if (skipped != NULL) {
+		*skipped = STORAGE_FAKE_TRACK_COUNT - count;
 	}
 
 	return (int)count;
