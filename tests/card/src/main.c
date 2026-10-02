@@ -300,6 +300,62 @@ ZTEST(card, test_desmontagem_que_falha_nao_prende_o_cartao)
 }
 
 /* -------------------------------------------------------------------------
+ * Empréstimo do volume
+ * ------------------------------------------------------------------------- */
+
+ZTEST(card, test_emprestimo_com_soquete_vazio)
+{
+	/* Nada a emprestar, e nada a devolver: quem recebe erro não chama
+	 * card_release. É daqui que o storage tira o -ENODEV do contrato.
+	 */
+	zassert_equal(-ENODEV, card_acquire());
+}
+
+ZTEST(card, test_emprestimo_com_volume_ilegivel)
+{
+	fake_disk_fail_read(true);
+	fake_disk_insert(true);
+	zassert_equal(CARD_UNREADABLE, settle(CARD_UNREADABLE));
+
+	/* Presente e ilegível pede outra mensagem na tela que soquete vazio,
+	 * e o código de erro é o que carrega a diferença.
+	 */
+	zassert_equal(-EIO, card_acquire());
+}
+
+ZTEST(card, test_emprestimo_com_cartao_pronto)
+{
+	fake_disk_insert(true);
+	zassert_equal(CARD_READY, settle(CARD_READY));
+
+	zassert_ok(card_acquire());
+	card_release();
+}
+
+ZTEST(card, test_monitor_nao_desmonta_durante_o_emprestimo)
+{
+	fake_disk_insert(true);
+	zassert_equal(CARD_READY, settle(CARD_READY));
+
+	zassert_ok(card_acquire());
+
+	/* O cartão sai no meio de uma leitura. O FatFs roda sem reentrância:
+	 * desmontar agora zeraria o objeto de trabalho do volume por baixo de
+	 * quem o está usando. O monitor tem de esperar a devolução.
+	 */
+	fake_disk_insert(false);
+	k_msleep(SETTLE_TIMEOUT_MS);
+
+	zassert_equal(CARD_READY, card_get_state(),
+		      "o monitor desmontou um volume emprestado");
+
+	card_release();
+
+	zassert_equal(CARD_ABSENT, settle(CARD_ABSENT),
+		      "a remocao nao foi vista depois da devolucao");
+}
+
+/* -------------------------------------------------------------------------
  * Observador
  * ------------------------------------------------------------------------- */
 
