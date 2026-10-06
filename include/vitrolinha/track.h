@@ -64,7 +64,9 @@ struct track_meta {
 	uint8_t index;
 
 	/**
-	 * @brief Falso se o interpretador rejeitou o arquivo.
+	 * @brief Falso se o interpretador rejeitou o arquivo, ou se a
+	 *        varredura já o recusou: cabeçalho ilegível, arquivo vazio ou
+	 *        maior que o buffer de faixa.
 	 *
 	 * A faixa continua listada, marcada com `!`, em vez de sumir sem
 	 * explicação.
@@ -81,13 +83,20 @@ struct track_meta {
  * truncamento em cada chamador — e cada repetição dessas é uma chance de
  * esquecer o terminador.
  *
+ * A truncagem nunca parte um caractere UTF-8: se o corte cairia no meio de
+ * uma sequência multibyte, o caractere inteiro fica de fora. Um acento
+ * cortado ao meio terminaria num byte solto, que a tela desenharia como lixo
+ * — e o nome da faixa é o único texto dela.
+ *
  * @param dst      Destino. Recebe sempre uma string terminada em NUL.
  * @param dst_size Tamanho de @p dst em bytes, terminador incluído.
  * @param src      Origem. Não precisa ser terminada em NUL.
  * @param src_len  Quantos bytes de @p src considerar.
  *
  * @return Número de bytes escritos em @p dst, sem contar o terminador. Menor
- *         que @p src_len indica truncamento.
+ *         que @p src_len indica truncamento, e pode ficar até três bytes
+ *         abaixo de `dst_size - 1` quando o corte recua até a fronteira de
+ *         um caractere.
  *
  * @note Seguro com @p dst_size igual a zero (não escreve nada e devolve 0) e
  *       com @p src nulo (produz string vazia).

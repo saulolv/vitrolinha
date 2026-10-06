@@ -119,10 +119,9 @@ static void card_report(void)
 /**
  * @brief Exercita o contrato do @ref storage.h e lista a biblioteca no log.
  *
- * Hoje quem responde é a implementação de mentira, com duas faixas
- * embutidas no binário — por isso ela não repara no cartão que o
- * @ref card_report acabou de montar. Ligar uma coisa na outra é das issues
- * #10 e #11, e quando acontecer esta função não muda: é o que a fronteira do
+ * Quem responde depende do alvo: na placa, o cartão que o @ref card_report
+ * acabou de montar; no simulador, a implementação de mentira, com duas faixas
+ * embutidas. Esta função não sabe qual das duas — é o que a fronteira do
  * @ref storage.h compra.
  *
  * @return Quantidade de faixas encontradas, ou erro negativo do contrato.
@@ -131,12 +130,12 @@ static int library_report(void)
 {
 	static struct track_meta library[LIBRARY_MAX];
 	static uint8_t buf[STORAGE_FILE_MAX];
+	size_t skipped;
 	int count;
 
-	LOG_INF("Faixas embutidas: %s",
-		storage_present() ? "disponiveis" : "indisponiveis");
+	LOG_INF("Biblioteca: %s", storage_present() ? "disponivel" : "indisponivel");
 
-	count = storage_scan(library, ARRAY_SIZE(library));
+	count = storage_scan(library, ARRAY_SIZE(library), &skipped);
 	if (count < 0) {
 		LOG_ERR("Varredura falhou: %d", count);
 		return count;
@@ -144,8 +143,20 @@ static int library_report(void)
 
 	LOG_INF("Biblioteca: %d faixa(s)", count);
 
+	/* É este aviso que vira mensagem na tela quando a interface existir. */
+	if (skipped > 0U) {
+		LOG_WRN("Biblioteca cheia: %zu arquivo(s) ignorado(s)", skipped);
+	}
+
 	for (int i = 0; i < count; i++) {
 		int size = storage_load(i, buf, sizeof(buf));
+
+		if (size == -ENOTSUP) {
+			/* O cartão ainda não carrega faixa: é a issue #11. */
+			LOG_INF("  [%u] %-16s%s", library[i].index, library[i].name,
+				library[i].valid ? "" : "  (invalida)");
+			continue;
+		}
 
 		if (size < 0) {
 			LOG_WRN("  [%u] %-16s  carga falhou: %d", library[i].index,

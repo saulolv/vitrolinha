@@ -31,14 +31,26 @@ extern "C" {
 #endif
 
 /**
- * @brief Ponto de montagem do cartão.
+ * @brief Nome do disco do cartão no `disk_access`.
  *
- * O `disk-name` do nó `sdhc0` da ZBook é `"SD"`, e o subsistema de arquivos
- * exige a barra inicial. No alvo de simulação o mesmo nome chega por
- * `CONFIG_FS_FATFS_CUSTOM_MOUNT_POINTS`, para que o caminho seja idêntico nos
- * dois alvos.
+ * É o `disk-name` do nó `sdhc0` da ZBook. No alvo de simulação o mesmo nome
+ * chega por `CONFIG_FS_FATFS_CUSTOM_MOUNT_POINTS`, para que o caminho seja
+ * idêntico nos dois alvos.
  */
-#define CARD_MOUNT_POINT "/SD"
+#define CARD_DISK_NAME "SD"
+
+/**
+ * @brief Ponto de montagem do cartão, prefixo de todo caminho dentro dele.
+ *
+ * Derivado de ::CARD_DISK_NAME, para que os dois não possam deixar de casar.
+ * A barra é exigência do subsistema de arquivos; os **dois-pontos** são do
+ * FatFs, e não são enfeite. O Zephyr entrega ao FatFs o caminho sem a barra,
+ * e o FatFs só reconhece o volume pelo prefixo `SD:`. Sem ele a montagem
+ * ainda funciona — cai no volume padrão —, mas `SD/FURELIS.TXT` é lido como
+ * o arquivo `FURELIS.TXT` dentro de um diretório `SD` que não existe, e
+ * nenhum arquivo do cartão abre.
+ */
+#define CARD_MOUNT_POINT "/" CARD_DISK_NAME ":"
 
 /**
  * @brief Os três estados do cartão.
@@ -146,6 +158,42 @@ bool card_ready(void);
  *          própria e prioridade baixa.
  */
 enum card_state card_refresh(void);
+
+/**
+ * @brief Empresta o volume montado: enquanto durar, ninguém o desmonta.
+ *
+ * Existe porque o FatFs roda sem reentrância e o `fs_unmount` não espera um
+ * `fs_read` em curso noutra thread. Sem o empréstimo, um cartão puxado no
+ * meio de uma varredura faria o monitor desmontar o volume por baixo da
+ * leitura, com o objeto de trabalho do FatFs sendo zerado enquanto outra
+ * thread ainda o usa.
+ *
+ * Com o empréstimo, o monitor espera: a remoção é vista na primeira sondagem
+ * depois de @ref card_release. Até lá, as leituras de quem pegou o volume
+ * emprestado falham com erro, que é o que um cartão fora do soquete deve
+ * produzir.
+ *
+ * Quem pega emprestado devolve com @ref card_release, e só quando esta função
+ * devolveu 0. Durante o empréstimo, não chamar @ref card_refresh: a trava é
+ * recursiva, e a avaliação desmontaria o volume que o próprio chamador está
+ * usando.
+ *
+ * @retval 0       Volume montado e emprestado.
+ * @retval -ENODEV Soquete vazio. Nada a devolver.
+ * @retval -EIO    Cartão presente e ilegível. Nada a devolver.
+ *
+ * @warning **Pode bloquear**, pelo tempo de uma montagem em curso no monitor
+ *          (até 1500 ms). Nunca da thread `player` nem do callback do
+ *          temporizador.
+ *
+ * @see docs/adr/0009-a-varredura-empresta-o-volume.md
+ */
+int card_acquire(void);
+
+/**
+ * @brief Devolve o volume emprestado por @ref card_acquire.
+ */
+void card_release(void);
 
 /**
  * @brief Nome do estado, para log e para tela.

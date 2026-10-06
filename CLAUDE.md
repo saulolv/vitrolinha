@@ -375,6 +375,22 @@ sistema é **cooperativa** (`CONFIG_SYSTEM_WORKQUEUE_PRIORITY=-1`), o que faria
 uma montagem segurar o `player`. Ver a [ADR
 0007](docs/adr/0007-monitor-do-cartao-em-thread-propria.md).
 
+O ponto de montagem é **`"/SD:"`, com os dois-pontos**. Sem eles a montagem
+funciona e nenhum arquivo abre: o FatFs só reconhece o volume pelo prefixo
+`SD:`, e lê `SD/FURELIS.TXT` como um subdiretório `SD`.
+
+Quem lê o volume **pega emprestado**: `card_acquire()`/`card_release()`
+seguram a trava do `card`, e o monitor não desmonta no meio de uma leitura. O
+FatFs roda sem reentrância e o `fs_read` não trava nada, então sem o
+empréstimo um cartão puxado no meio da varredura seria desmontado por baixo
+dela. Ver a [ADR 0009](docs/adr/0009-a-varredura-empresta-o-volume.md).
+
+A varredura (`src/storage.c`) lê só a raiz, só `.TXT`/`.RTX`/`.RTT`, **na ordem
+do diretório** — é ela que dá sentido a "o 33.º arquivo é ignorado". Arquivo
+sem cabeçalho legível, vazio ou maior que 4 KB entra na lista como inválido,
+com o nome 8.3. No simulador, que não tem disco, o
+`CONFIG_VITROLINHA_STORAGE` põe a implementação de mentira no lugar.
+
 ### Quem é o dono do relógio
 
 A UI precisa do tempo decorrido sem interrogar o `player` a cada quadro. A

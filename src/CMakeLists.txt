@@ -26,13 +26,19 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/track.c
 )
 
-# Implementação de mentira do storage: duas faixas embutidas no binário.
-# Quando o storage do cartão existir (issues #10 e #11), vira uma escolha entre
-# as duas; hoje há uma só, e antecipar o Kconfig da escolha seria configurar um
-# seletor de uma opção.
-target_sources(app PRIVATE
-  ${CMAKE_CURRENT_LIST_DIR}/storage_fake.c
-)
+# Quem responde ao storage.h: o cartão ou a implementação de mentira, com duas
+# faixas embutidas no binário. A escolha é do Kconfig.vitrolinha — cartão na
+# placa, mentira no simulador, que não tem disco.
+#
+# O `else` é a mentira, e não a ausência de storage, por causa dos testes: um
+# teste só enxerga as opções do projeto se tiver um Kconfig próprio que as
+# inclua, e só tests/storage_card/ tem. Os demais não enxergam a escolha e
+# caem aqui, com a mentira — que é o que eles usavam antes de ela existir.
+if(CONFIG_VITROLINHA_STORAGE_CARD)
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage.c)
+else()
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_fake.c)
+endif()
 
 # O cartão. Condicional porque o módulo monta um volume FAT: sem o sistema de
 # arquivos ele não teria o que fazer, e arrastá-lo para dentro dos testes dos

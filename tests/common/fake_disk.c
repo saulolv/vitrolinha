@@ -46,6 +46,29 @@ static bool failing_init;
 static bool failing_read;
 static bool failing_deinit;
 
+/**
+ * @brief Acessos que o cartão ainda atende antes de sair do soquete.
+ *
+ * Negativo desliga a contagem. Ver @ref fake_disk_eject_after.
+ */
+static int eject_countdown = -1;
+
+/**
+ * @brief Conta um acesso, e tira o cartão do soquete quando a conta zera.
+ *
+ * Chamada no começo de toda consulta de estado e de toda leitura: são os dois
+ * caminhos por onde o FatFs descobre, na placa, que o cartão saiu.
+ */
+static void count_access(void)
+{
+	if (eject_countdown == 0) {
+		inserted = false;
+		eject_countdown = -1;
+	} else if (eject_countdown > 0) {
+		eject_countdown--;
+	}
+}
+
 static int fake_init(struct disk_info *disk)
 {
 	ARG_UNUSED(disk);
@@ -67,6 +90,8 @@ static int fake_status(struct disk_info *disk)
 {
 	ARG_UNUSED(disk);
 
+	count_access();
+
 	if (!inserted) {
 		return DISK_STATUS_NOMEDIA;
 	}
@@ -77,6 +102,8 @@ static int fake_status(struct disk_info *disk)
 static int fake_read(struct disk_info *disk, uint8_t *buf, uint32_t start, uint32_t count)
 {
 	ARG_UNUSED(disk);
+
+	count_access();
 
 	if (!inserted || failing_read) {
 		return -EIO;
@@ -144,9 +171,9 @@ static const struct disk_operations fake_ops = {
 
 static struct disk_info fake_disk = {
 	/* O mesmo nome do `disk-name` do nó `sdhc0`, que é o que o módulo sob
-	 * teste deriva de CARD_MOUNT_POINT.
+	 * teste procura.
 	 */
-	.name = CARD_MOUNT_POINT + 1,
+	.name = CARD_DISK_NAME,
 	.ops = &fake_ops,
 };
 
@@ -158,8 +185,8 @@ int fake_disk_setup(void)
 	fake_disk_register(true);
 
 	/* Formatar exige cartão no soquete. O `dev_id` do FatFs é a string do
-	 * volume, sem a barra inicial que o subsistema de arquivos exige no
-	 * ponto de montagem.
+	 * volume com os dois-pontos (`"SD:"`), sem a barra inicial que o
+	 * subsistema de arquivos exige no ponto de montagem.
 	 */
 	inserted = true;
 
@@ -172,7 +199,7 @@ int fake_disk_setup(void)
 	 * contagem de referências aqui é o que faz cada teste começar do mesmo
 	 * lugar, em vez de herdar um `+1` do preparo.
 	 */
-	(void)disk_access_ioctl(CARD_MOUNT_POINT + 1, DISK_IOCTL_CTRL_DEINIT, &force);
+	(void)disk_access_ioctl(CARD_DISK_NAME, DISK_IOCTL_CTRL_DEINIT, &force);
 
 	fake_disk_reset();
 
@@ -214,8 +241,14 @@ void fake_disk_fail_deinit(bool failing)
 	failing_deinit = failing;
 }
 
+void fake_disk_eject_after(unsigned int accesses)
+{
+	eject_countdown = (int)accesses;
+}
+
 void fake_disk_reset(void)
 {
+	eject_countdown = -1;
 	fake_disk_register(true);
 
 	inserted = false;

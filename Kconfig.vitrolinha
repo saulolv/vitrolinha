@@ -1,0 +1,36 @@
+# Opções próprias do Vitrolinha.
+#
+# Separadas do Kconfig da raiz para que os testes possam incluí-las sem
+# incluir uma segunda vez o Kconfig.zephyr: o teste que precisa de uma opção
+# daqui tem um Kconfig de duas linhas que faz `rsource` deste arquivo.
+
+menu "Vitrolinha"
+
+choice VITROLINHA_STORAGE
+	prompt "Origem da biblioteca"
+	default VITROLINHA_STORAGE_FAKE if BOARD_NATIVE_SIM
+	default VITROLINHA_STORAGE_CARD
+	help
+	  Quem responde ao contrato de include/vitrolinha/storage.h.
+
+	  Na placa é o cartão. No simulador é a implementação de mentira: lá
+	  não há disco registrado, o cartão é sempre "ausente", e sem as faixas
+	  embutidas as trilhas de áudio e de interface ficariam sem biblioteca
+	  para tocar e desenhar.
+
+config VITROLINHA_STORAGE_CARD
+	bool "Cartao microSD"
+	depends on FAT_FILESYSTEM_ELM
+	help
+	  Varre a raiz do volume montado pelo módulo card e lê o nome de cada
+	  faixa do cabeçalho RTTTL. Ver src/storage.c.
+
+config VITROLINHA_STORAGE_FAKE
+	bool "Faixas embutidas no binario (implementacao de mentira)"
+	help
+	  Duas faixas RTTTL embutidas, sem cartão e sem sistema de arquivos.
+	  Ver src/storage_fake.c.
+
+endchoice
+
+endmenu
