@@ -2,16 +2,17 @@
  * @file loader.h
  * @brief Contrato: carga assíncrona de CSV e fornecimento de eventos.
  *
- * O loader será dono do buffer de STORAGE_FILE_MAX bytes, do parser e de
- * uma fila de capacidade fixa. Sua thread fará E/S e validação; o player
- * apenas solicitará trabalho e consumirá resultados sem bloquear.
+ * O loader é dono do buffer de STORAGE_FILE_MAX bytes, do parser e de
+ * uma fila de capacidade fixa. Sua thread faz E/S e validação; o player
+ * apenas solicita trabalho e consome resultados sem bloquear.
  *
- * Cada solicitação receberá um identificador para rejeitar respostas e
- * eventos de faixas substituídas. O buffer só poderá ser reutilizado após
- * o produtor abandonar a solicitação anterior. Não haverá leitura do
+ * Cada solicitação recebe um identificador para rejeitar respostas e
+ * eventos de faixas substituídas. O buffer só é reutilizado após
+ * o produtor abandonar a solicitação anterior. Não há leitura do
  * armazenamento durante a reprodução de uma faixa já carregada.
  *
- * Somente tipos e declarações; sem threads, filas ou funções implementadas.
+ * A fila tem 32 eventos. O worker repõe eventos da RAM à medida que o
+ * player os consome. Pedidos usam um único slot substituível, sem espera.
  */
 
 #ifndef VITROLINHA_LOADER_H_

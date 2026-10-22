@@ -2,16 +2,17 @@
  * @file parser_csv.h
  * @brief Contrato: validação e leitura de eventos de um CSV em memória.
  *
- * Formato proposto: cabeçalho obrigatório frequency_hz,duration_ms,
+ * Formato: cabeçalho obrigatório frequency_hz,duration_ms,
  * seguido de dois inteiros decimais por linha. Frequência zero é silêncio;
- * duração deve ser positiva. Aceitar LF, CRLF e última linha sem quebra.
- * Linhas vazias, campos entre aspas e colunas extras serão rejeitados.
+ * duração deve ser positiva. Aceita LF, CRLF e última linha sem quebra.
+ * Linhas vazias, espaços, sinais, frações, campos entre aspas e colunas
+ * extras são rejeitados. Um CR isolado não é uma quebra de linha válida.
  *
- * O parser preservará as frequências e durações, sem transposição nem
- * articulação automática. Não fará E/S, alocação dinâmica ou acesso ao
- * relógio. Todo o arquivo será validado antes de disponibilizar eventos.
- *
- * Somente tipos e declarações; as funções ainda não estão implementadas.
+ * O parser preserva as frequências e durações, sem transposição nem
+ * articulação automática. Não faz E/S, alocação dinâmica ou acesso ao
+ * relógio. Todo o arquivo é validado antes de disponibilizar eventos.
+ * Frequências devem caber em uint32_t; a faixa suportada pelo buzzer será
+ * verificada pela saída. A soma das durações não pode exceder 4294967 ms.
  */
 
 #ifndef VITROLINHA_PARSER_CSV_H_
@@ -57,7 +58,7 @@ struct parser_csv {
 
 /**
  * @brief Valida a faixa inteira e prepara o iterador no primeiro evento.
- * @param parser Estado de destino, utilizável somente se houver sucesso.
+ * @param parser Estado de destino; zerado em caso de falha.
  * @param buffer CSV completo; não precisa terminar em NUL.
  * @param length Quantidade exata de bytes disponíveis em buffer.
  * @param error Local do erro; pode ser NULL. Zerado em caso de sucesso.
@@ -73,10 +74,12 @@ int parser_csv_init(struct parser_csv *parser, const uint8_t *buffer,
  * @brief Obtém o próximo evento, incluindo o silêncio final da faixa.
  * @param parser Iterador inicializado com sucesso.
  * @param out Evento de destino; só é válido quando o retorno for 1.
- * @return 1 para evento entregue, 0 após o evento final ou -EINVAL para
- *         argumento inválido. O fim não será confundido com freq_hz zero.
+ * @return 1 para evento entregue, 0 após o evento final ou erro negativo
+ *         (-EINVAL para argumento/formato inválido; -ERANGE para overflow).
+ *         O fim não é confundido com freq_hz zero; out não muda sem evento.
  * @note Cada linha produz um evento no início de sua duração. Executar
  *       no loader; o callback do timer receberá eventos já preparados.
+ *       Com um buffer validado e inalterado, não haverá erro de conteúdo.
  */
 int parser_csv_next(struct parser_csv *parser, struct playback_event *out);
 

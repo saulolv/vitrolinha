@@ -2,10 +2,10 @@
  * @file storage.h
  * @brief Contrato: varredura e carga da biblioteca.
  *
- * Isola o cartão do resto do sistema. Nenhum outro módulo inclui cabeçalho
- * de sistema de arquivos, e nenhum outro módulo sabe que existe FAT, SPI ou
+ * Isola a origem dos arquivos do resto do sistema. Nenhum outro módulo inclui
+ * cabeçalho de sistema de arquivos, nem sabe que existe FAT, SPI ou
  * detecção de presença — o que é o que permite trocar a origem das faixas
- * (cartão, flash interna, dados embutidos no binário) sem tocar em quem as
+ * (cartão, pasta do computador, dados embutidos no binário) sem tocar em quem as
  * consome.
  *
  * Montar o cartão **não** faz parte da interface, de propósito: a
@@ -37,7 +37,7 @@ extern "C" {
 /**
  * @brief Tamanho do buffer de faixa, em bytes.
  *
- * Um RTTTL típico tem de 100 a 400 bytes; 4 KB cobrem cerca de mil notas.
+ * Limite comum às implementações, incluindo os CSVs no computador.
  * Arquivo maior é **rejeitado**, não truncado: meia melodia sem aviso é pior
  * do que uma mensagem de erro.
  */
@@ -53,8 +53,8 @@ extern "C" {
  * @return Quantidade de faixas escritas em @p out, de 0 a
  *         `min(max, LIBRARY_MAX)`, ou um erro negativo:
  * @retval -EINVAL @p out nulo ou @p max igual a zero.
- * @retval -ENODEV Sem cartão.
- * @retval -EIO    O cartão está presente mas não pôde ser lido.
+ * @retval -ENODEV Origem indisponível (cartão ou pasta ausente).
+ * @retval -EIO    Falha de acesso à biblioteca.
  */
 int storage_scan(struct track_meta *out, size_t max);
 
@@ -72,14 +72,14 @@ int storage_scan(struct track_meta *out, size_t max);
  * @return Quantidade de bytes escritos em @p buf, ou um erro negativo:
  * @retval -EINVAL @p buf nulo ou @p len igual a zero.
  * @retval -ENOENT @p track fora da biblioteca.
- * @retval -ENODEV Sem cartão.
- * @retval -EFBIG  O arquivo não cabe em @p len. Nada foi escrito.
+ * @retval -ENODEV Origem indisponível (cartão ou pasta ausente).
+ * @retval -EFBIG  O arquivo excede @p len ou STORAGE_FILE_MAX. Nada foi escrito.
  * @retval -EIO    Falha de leitura.
  */
 int storage_load(int track, uint8_t *buf, size_t len);
 
 /**
- * @brief Diz se há cartão utilizável agora.
+ * @brief Diz se a origem da biblioteca está acessível agora.
  *
  * @return Verdadeiro se a biblioteca pode ser varrida e lida.
  *

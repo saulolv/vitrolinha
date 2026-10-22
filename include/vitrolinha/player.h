@@ -2,19 +2,21 @@
  * @file player.h
  * @brief Contrato: inicialização da máquina de reprodução.
  *
- * O player consumirá os comandos existentes em cmd.h e publicará estado
- * por snapshot.h. Solicitará faixas ao loader e aplicará eventos por tone.h,
+ * O player consome os comandos existentes em cmd.h e publica estado
+ * por snapshot.h. Solicita faixas ao loader e aplica eventos por tone.h,
  * usando prazos absolutos. A máquina de estados e o timer serão internos.
  *
- * Não haverá uma segunda API pública de tocar/pausar: os comandos já
+ * Não há uma segunda API pública de tocar/pausar: os comandos já
  * definidos são a entrada de controle. Arquivos, parser e gráficos não
- * serão executados pela thread do player nem pelo callback do timer.
+ * são executados pela thread do player nem pelo callback do timer.
  *
- * Somente declaração; não inicia nenhuma reprodução nesta etapa.
+ * Próxima/anterior circulam pela biblioteca informada na inicialização.
  */
 
 #ifndef VITROLINHA_PLAYER_H_
 #define VITROLINHA_PLAYER_H_
+
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,13 +24,14 @@ extern "C" {
 
 /**
  * @brief Prepara estado, timer e thread que consumirá a fila de comandos.
+ * @param track_count Quantidade obtida por storage_scan, de 0 a LIBRARY_MAX.
  * @return 0 no sucesso ou erro negativo de inicialização.
  * @note Chamar uma vez, após loader_init() e tone_init(). O estado inicial
- *       será parado e sem faixa; fim, parada e falha deverão silenciar.
- *       Pausa preservará a nota corrente e deslocará a base ao retomar,
- *       seguindo o contrato temporal do projeto.
+ *       é parado e sem faixa; fim, parada e falha silenciam a saída.
+ *       A pausa preserva a nota corrente; a retomada reinicia essa nota.
+ *       A quantidade da biblioteca fica fixa até encerrar a aplicação.
  */
-int player_init(void);
+int player_init(size_t track_count);
 
 #ifdef __cplusplus
 }

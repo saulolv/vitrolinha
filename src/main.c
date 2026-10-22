@@ -119,11 +119,8 @@ static void card_report(void)
 /**
  * @brief Exercita o contrato do @ref storage.h e lista a biblioteca no log.
  *
- * Hoje quem responde é a implementação de mentira, com duas faixas
- * embutidas no binário — por isso ela não repara no cartão que o
- * @ref card_report acabou de montar. Ligar uma coisa na outra é das issues
- * #10 e #11, e quando acontecer esta função não muda: é o que a fronteira do
- * @ref storage.h compra.
+ * A origem depende do build: faixas embutidas (storage_fake) ou CSVs de uma
+ * pasta do computador (storage_host). Ambas independem do estado do cartão.
  *
  * @return Quantidade de faixas encontradas, ou erro negativo do contrato.
  */
@@ -133,7 +130,7 @@ static int library_report(void)
 	static uint8_t buf[STORAGE_FILE_MAX];
 	int count;
 
-	LOG_INF("Faixas embutidas: %s",
+	LOG_INF("Faixas: %s",
 		storage_present() ? "disponiveis" : "indisponiveis");
 
 	count = storage_scan(library, ARRAY_SIZE(library));

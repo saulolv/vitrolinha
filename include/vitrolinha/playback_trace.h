@@ -2,16 +2,17 @@
  * @file playback_trace.h
  * @brief Contrato: registro dos tons efetivamente aplicados no simulador.
  *
- * Guardará instantes observados e frequências em um buffer de capacidade
- * fixa. A gravação em memória será permitida no callback do timer; a
- * exportação para arquivo ocorrerá somente depois de encerrar a captura.
+ * Guarda instantes observados e frequências em um buffer de capacidade
+ * fixa. A gravação em memória é permitida no callback do timer; a
+ * exportação para arquivo ocorre somente depois de encerrar a captura.
  *
- * CSV de saída proposto: cabeçalho elapsed_us,frequency_hz. Cada linha
+ * CSV de saída: cabeçalho elapsed_us,frequency_hz. Cada linha
  * informa quando a frequência passou a valer. A última linha é silêncio
  * no instante de encerramento, inclusive se o tom anterior já era zero.
  * Este formato é distinto do CSV musical de frequência e duração.
  *
- * Somente tipos e declarações; não grava arquivos nesta etapa.
+ * Use k_cyc_to_us_floor64(k_cycle_get_64()) para begin/end: é o mesmo
+ * relógio observado por tone_trace, inclusive dentro do callback do timer.
  */
 
 #ifndef VITROLINHA_PLAYBACK_TRACE_H_
@@ -19,6 +20,9 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
+/** @brief Limite fixo por captura, incluindo pausas e silêncio de encerramento. */
+#define PLAYBACK_TRACE_CAPACITY 2048U
 
 #ifdef __cplusplus
 extern "C" {

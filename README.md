@@ -84,8 +84,13 @@ botões e jitter real.
 Cartão também não: no alvo simulado não há disco registrado, e o firmware
 relata o cartão como **ausente**. Não é remendo — é o mesmo caminho de código
 que a placa percorre com o soquete vazio, e é bom que ele seja exercitado
-todo dia. Inserção, remoção e volume ilegível são exercitados em
-[`tests/card/`](tests/card/), com um disco que o próprio teste põe e tira.
+todo dia. A biblioteca do simulador vem da implementação de mentira, com duas
+faixas embutidas no binário: o `CONFIG_VITROLINHA_STORAGE` (em
+`Kconfig.vitrolinha`) escolhe o cartão na placa e a mentira no simulador.
+Inserção, remoção e volume ilegível são exercitados em
+[`tests/card/`](tests/card/), e a varredura de verdade em
+[`tests/storage_card/`](tests/storage_card/), os dois sobre um disco que o
+próprio teste põe e tira.
 
 **A janela** precisa de um servidor gráfico, que o contêiner não tem. Rodando
 por `scripts/sim.sh`, o firmware executa e o relatório sai no terminal, mas a
@@ -175,7 +180,7 @@ na primeira seção do relatório, de propósito.
 | `boards/` | O que é específico de cada alvo: `.conf` e `.overlay` por alvo |
 | `include/vitrolinha/` | Cabeçalhos públicos dos módulos: os quatro contratos compartilhados pelas três trilhas, e o que mais atravessa arquivos |
 | `src/` | Implementação dos módulos e ponto de entrada. `src/CMakeLists.txt` é a única lista de fontes do projeto |
-| `tests/` | Um diretório por módulo, em `ztest` sobre `native_sim` |
+| `tests/` | Um diretório por módulo, em `ztest` sobre `native_sim`; `tests/common/` guarda o disco de mentira que `card` e `storage_card` dividem |
 | `bench/` | Bancadas de medição. Aplicações Zephyr à parte, uma por pergunta |
 | `scripts/` | Ferramentas: imagem, workspace, build da placa, simulador, testes, portão de cobertura, bancadas |
 | `docker/` | Imagem enxuta de compilação |
