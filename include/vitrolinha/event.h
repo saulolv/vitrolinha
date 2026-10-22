@@ -7,7 +7,6 @@
  * Frequência zero representa silêncio. A sequência termina com um evento
  * de silêncio no instante correspondente à duração total.
  *
- * Somente definição de interface; não há implementação neste arquivo.
  */
 
 #ifndef VITROLINHA_EVENT_H_
@@ -19,7 +18,7 @@
 struct playback_event {
 	/** @brief Instante em microssegundos, sem incluir pausas do usuário. */
 	uint32_t offset_us;
-	/** @brief Frequência em hertz; zero desliga o tom. */
+	/** @brief Frequência em hertz;*/
 	uint32_t freq_hz;
 };
 

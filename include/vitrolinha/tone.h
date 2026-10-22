@@ -6,7 +6,7 @@
  * implementação PWM na placa. Apenas uma implementação será selecionada
  * por build. O módulo não decide a duração do tom; isso cabe ao player.
  *
- * Somente declarações; ainda não produz som nem registra eventos.
+ * No simulador, uma captura deve estar aberta antes de aplicar tons.
  */
 
 #ifndef VITROLINHA_TONE_H_

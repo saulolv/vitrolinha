@@ -1,34 +1,108 @@
 /**
  * @file playback_trace.c
- * @brief Esqueleto do registro de execução e exportação de eventos musicais.
+ * @brief Captura fixa em RAM; exportação no host somente após encerramento.
  *
- * Manterá uma captura de capacidade fixa em RAM, sem alocação no caminho
- * de reprodução. Os instantes serão observados na saída tone_trace, não
- * copiados dos offsets pretendidos pelo parser. Pausas reais da execução
- * simulada aparecerão como intervalos de silêncio no registro.
- *
- * A capacidade será dimensionada na implementação. Estouro tornará a
- * captura inválida para exportação, sem descartar eventos silenciosamente.
- * A escrita no host ocorrerá apenas com captura encerrada, em contexto
- * de thread separado do player. Formato definido em playback_trace.h.
- *
- * Somente assinaturas; não contém buffer, E/S ou funções implementadas.
- * Arquivo exclusivo do simulador, ainda não integrado ao build.
+ * O player serializa os produtores. begin/read/export não concorrem com
+ * a reprodução; o caminho do timer não aloca nem acessa arquivos.
  */
-
 #include <vitrolinha/playback_trace.h>
 
-/** @brief A implementar: iniciar uma captura. @see playback_trace.h */
-int playback_trace_begin(uint64_t start_us);
+#include <errno.h>
+#include <inttypes.h>
+#include <stdbool.h>
+#include <stdio.h>
 
-/** @brief A implementar: registrar evento em RAM. @see playback_trace.h */
-int playback_trace_record(uint64_t timestamp_us, uint32_t frequency_hz);
+static struct playback_trace_entry entries[PLAYBACK_TRACE_CAPACITY];
+static size_t count;
+static uint64_t start;
+static bool active;
+static bool incomplete;
 
-/** @brief A implementar: registrar silêncio e encerrar. @see playback_trace.h */
-int playback_trace_end(uint64_t timestamp_us);
+int playback_trace_begin(uint64_t start_us)
+{
+	if (active) {
+		return -EBUSY;
+	}
+	start = start_us;
+	count = 0;
+	incomplete = false;
+	active = true;
+	return 0;
+}
 
-/** @brief A implementar: consultar evento capturado. @see playback_trace.h */
-int playback_trace_read(size_t index, struct playback_trace_entry *out);
+int playback_trace_record(uint64_t timestamp_us, uint32_t frequency_hz)
+{
+	if (!active) {
+		return -EACCES;
+	}
+	if (timestamp_us < start ||
+	    (count > 0 && timestamp_us - start < entries[count - 1].elapsed_us)) {
+		return -EINVAL;
+	}
+	if (count == PLAYBACK_TRACE_CAPACITY) {
+		incomplete = true;
+		return -ENOSPC;
+	}
+	entries[count++] = (struct playback_trace_entry){
+		.elapsed_us = timestamp_us - start, .freq_hz = frequency_hz,
+	};
+	return 0;
+}
 
-/** @brief A implementar: exportar CSV no host. @see playback_trace.h */
-int playback_trace_export_csv(const char *path);
+int playback_trace_end(uint64_t timestamp_us)
+{
+	int err = playback_trace_record(timestamp_us, 0);
+
+	if (err == 0 || err == -ENOSPC) {
+		active = false;
+	}
+	return err;
+}
+
+int playback_trace_read(size_t index, struct playback_trace_entry *out)
+{
+	if (out == NULL) {
+		return -EINVAL;
+	}
+	if (active) {
+		return -EBUSY;
+	}
+	if (incomplete) {
+		return -ENOSPC;
+	}
+	if (index >= count) {
+		return 0;
+	}
+	*out = entries[index];
+	return 1;
+}
+
+int playback_trace_export_csv(const char *path)
+{
+	if (path == NULL || path[0] == '\0') {
+		return -EINVAL;
+	}
+	if (active) {
+		return -EBUSY;
+	}
+	if (incomplete) {
+		return -ENOSPC;
+	}
+	FILE *file = fopen(path, "w");
+
+	if (file == NULL) {
+		return -EIO;
+	}
+	int err = fprintf(file, "elapsed_us,frequency_hz\n") < 0 ? -EIO : 0;
+
+	for (size_t i = 0; err == 0 && i < count; i++) {
+		if (fprintf(file, "%" PRIu64 ",%" PRIu32 "\n",
+			    entries[i].elapsed_us, entries[i].freq_hz) < 0) {
+			err = -EIO;
+		}
+	}
+	if (fclose(file) != 0) {
+		err = -EIO;
+	}
+	return err;
+}

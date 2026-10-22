@@ -119,10 +119,10 @@ static void card_report(void)
 /**
  * @brief Exercita o contrato do @ref storage.h e lista a biblioteca no log.
  *
- * Quem responde depende do alvo: na placa, o cartão que o @ref card_report
+ * Quem responde depende do build: na placa, o cartão que o @ref card_report
  * acabou de montar; no simulador, a implementação de mentira, com duas faixas
- * embutidas. Esta função não sabe qual das duas — é o que a fronteira do
- * @ref storage.h compra.
+ * embutidas, ou os CSVs de uma pasta do computador (storage_host). Esta
+ * função não sabe qual — é o que a fronteira do @ref storage.h compra.
  *
  * @return Quantidade de faixas encontradas, ou erro negativo do contrato.
  */
