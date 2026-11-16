@@ -40,31 +40,30 @@ LOG_MODULE_REGISTER(sim_encoder, LOG_LEVEL_INF);
  * @param evt       Evento vindo do subsistema `input`.
  * @param user_data Não usado.
  */
-static void sim_encoder_on_key(struct input_event *evt, void *user_data)
-{
-	int32_t step;
+static void sim_encoder_on_key(struct input_event *evt, void *user_data) {
+    int32_t step;
 
-	ARG_UNUSED(user_data);
+    ARG_UNUSED(user_data);
 
-	if (evt->type != INPUT_EV_KEY || evt->value == 0) {
-		return;
-	}
+    if (evt->type != INPUT_EV_KEY || evt->value == 0) {
+        return;
+    }
 
-	switch (evt->code) {
-	case INPUT_KEY_LEFT:
-		step = -SIM_ENCODER_STEP;
-		break;
-	case INPUT_KEY_RIGHT:
-		step = SIM_ENCODER_STEP;
-		break;
-	default:
-		return;
-	}
+    switch (evt->code) {
+    case INPUT_KEY_LEFT:
+        step = -SIM_ENCODER_STEP;
+        break;
+    case INPUT_KEY_RIGHT:
+        step = SIM_ENCODER_STEP;
+        break;
+    default:
+        return;
+    }
 
-	/* Sem espera: isto roda no contexto de quem publicou o evento de
-	 * tecla, e bloquear ali seguraria todo o subsistema de entrada.
-	 */
-	(void)input_report_rel(NULL, INPUT_REL_WHEEL, step, true, K_NO_WAIT);
+    /* Sem espera: isto roda no contexto de quem publicou o evento de
+     * tecla, e bloquear ali seguraria todo o subsistema de entrada.
+     */
+    (void)input_report_rel(NULL, INPUT_REL_WHEEL, step, true, K_NO_WAIT);
 }
 
 /* NULL como dispositivo: escuta todos os produtores de entrada, e filtra por

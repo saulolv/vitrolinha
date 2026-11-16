@@ -79,3 +79,12 @@
 &{/soc/gpio@40028000/gpio-port@1/encoder} {
 	debounce-interval-ms = <20>;
 };
+
+/ {
+    lvgl_encoder: lvgl-encoder-input {
+        compatible = "zephyr,lvgl-encoder-input";
+        /* input = <&encoder_qdec>; */
+        rotation-input-code = <INPUT_REL_WHEEL>;
+        button-input-code = <INPUT_KEY_ENTER>;
+    };
+};

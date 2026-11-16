@@ -31,6 +31,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+#define CONFIG_BOARD_ZBOOK
+
 LOG_MODULE_REGISTER(vitrolinha, LOG_LEVEL_INF);
 
 /*
