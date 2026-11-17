@@ -151,16 +151,10 @@ static int library_report(void)
 	for (int i = 0; i < count; i++) {
 		int size = storage_load(i, buf, sizeof(buf));
 
-		if (size == -ENOTSUP) {
-			/* O cartão ainda não carrega faixa: é a issue #11. */
-			LOG_INF("  [%u] %-16s%s", library[i].index, library[i].name,
-				library[i].valid ? "" : "  (invalida)");
-			continue;
-		}
-
+		/* A mensagem é a mesma que a tela de erro vai mostrar. */
 		if (size < 0) {
-			LOG_WRN("  [%u] %-16s  carga falhou: %d", library[i].index,
-				library[i].name, size);
+			LOG_WRN("  [%u] %-16s  %s (%d)", library[i].index, library[i].name,
+				storage_error_text(size), size);
 			continue;
 		}
 

@@ -2,13 +2,18 @@
  * @file storage.c
  * @brief O @ref storage.h servido pelo cartão: a biblioteca é a raiz do volume.
  *
- * Duas decisões moldam este arquivo.
+ * Três decisões moldam este arquivo.
  *
  * **O nome da faixa vem do cabeçalho RTTTL**, não do sistema de arquivos. Sem
  * `CONFIG_FS_FATFS_LFN` a leitura de diretório devolve `FURELIS.TXT`, ruim
  * numa tela cujo único texto é o nome. Ler o cabeçalho custa uma abertura por
  * arquivo, feita uma vez por varredura; ligar nomes longos custaria RAM
  * estática para sempre.
+ *
+ * **A faixa é carregada inteira, de uma vez**, antes de tocar. O tamanho é
+ * conferido na entrada de diretório antes de ler um byte, para que o arquivo
+ * grande seja recusado sem deixar meia melodia no buffer. Devolvida a carga,
+ * a reprodução não precisa mais deste módulo nem do cartão.
  *
  * **A varredura pega o volume emprestado** (@ref card_acquire). O FatFs roda
  * sem reentrância e o monitor do cartão desmonta noutra thread; sem o
@@ -73,6 +78,18 @@ static size_t lib_count;
  * dependa deste número. Só é tocado com o volume emprestado.
  */
 static uint8_t peek[STORAGE_HEADER_PEEK];
+
+/**
+ * @brief Monta o caminho de um arquivo da raiz do volume.
+ *
+ * @param path Destino, de ::STORAGE_PATH_SIZE bytes — o que cabe qualquer
+ *             nome que o `fs_readdir` entregue.
+ * @param name Nome 8.3, como o `fs_readdir` o entregou.
+ */
+static void track_path(char path[STORAGE_PATH_SIZE], const char *name)
+{
+	(void)snprintk(path, STORAGE_PATH_SIZE, "%s/%s", CARD_MOUNT_POINT, name);
+}
 
 /**
  * @brief Diz se a entrada de diretório é uma faixa.
@@ -204,7 +221,7 @@ static int describe_track(const struct fs_dirent *entry, uint8_t index,
 	ssize_t got;
 	bool valid;
 
-	(void)snprintk(path, sizeof(path), "%s/%s", CARD_MOUNT_POINT, entry->name);
+	track_path(path, entry->name);
 
 	fs_file_t_init(&file);
 
@@ -240,6 +257,73 @@ static int describe_track(const struct fs_dirent *entry, uint8_t index,
 	track_meta_init(meta, index, name, name_len, valid);
 
 	return 0;
+}
+
+/**
+ * @brief Lê um arquivo da biblioteca, inteiro, para @p buf.
+ *
+ * O tamanho vem da entrada de diretório, **antes** da leitura. É o que permite
+ * recusar o arquivo grande sem escrever nada em @p buf: ler até encher e só
+ * então descobrir que sobrou deixaria no buffer meia melodia, justamente o
+ * que o contrato promete não fazer.
+ *
+ * A leitura é um laço porque o `fs_read` pode devolver menos que o pedido. O
+ * FatFs só faz isso no fim do arquivo, mas o contrato do Zephyr não promete
+ * mais que "até tantos bytes" — e um arquivo que acaba antes do que a entrada
+ * de diretório anunciou é volume inconsistente, não faixa curta.
+ *
+ * @param name Nome 8.3 do arquivo.
+ * @param buf  Destino.
+ * @param len  Capacidade de @p buf, já limitada a ::STORAGE_FILE_MAX.
+ * @return Bytes lidos, ou erro negativo:
+ * @retval -ENOENT O arquivo não existe mais no volume.
+ * @retval -EFBIG  Não cabe em @p len. @p buf intocado.
+ * @retval -EIO    Falha de leitura, ou arquivo menor que o anunciado.
+ */
+static int load_file(const char *name, uint8_t *buf, size_t len)
+{
+	char path[STORAGE_PATH_SIZE];
+	struct fs_dirent entry;
+	struct fs_file_t file;
+	size_t total = 0U;
+	ssize_t got;
+	int err;
+
+	track_path(path, name);
+
+	/* Sumir entre a varredura e a carga é o cartão trocado sem que a
+	 * biblioteca tenha sido varrida de novo: a faixa não está mais nela.
+	 */
+	err = fs_stat(path, &entry);
+	if (err != 0) {
+		return (err == -ENOENT) ? -ENOENT : -EIO;
+	}
+
+	if (entry.size > len) {
+		return -EFBIG;
+	}
+
+	fs_file_t_init(&file);
+
+	if (fs_open(&file, path, FS_O_READ) != 0) {
+		return -EIO;
+	}
+
+	while (total < entry.size) {
+		got = fs_read(&file, &buf[total], entry.size - total);
+		if (got <= 0) {
+			break;
+		}
+
+		total += (size_t)got;
+	}
+
+	/* Só leitura: não há o que descarregar, e o erro que importaria já
+	 * apareceu no fs_read.
+	 */
+	(void)fs_close(&file);
+
+	return (total == entry.size) ? (int)total : -EIO;
 }
 
 /**
@@ -347,29 +431,45 @@ int storage_scan(struct track_meta *out, size_t max, size_t *skipped)
 
 int storage_load(int track, uint8_t *buf, size_t len)
 {
-	int err;
+	int result;
 
 	if ((buf == NULL) || (len == 0U)) {
 		return -EINVAL;
 	}
 
-	err = card_acquire();
-	if (err != 0) {
-		return err;
+	/* O teto do buffer de faixa vale mesmo que o chamador ofereça mais
+	 * espaço: é o mesmo critério com que a varredura marcou a faixa, e uma
+	 * faixa listada com `!` não pode carregar só porque o buffer de quem
+	 * pediu era maior.
+	 */
+	if (len > STORAGE_FILE_MAX) {
+		len = STORAGE_FILE_MAX;
+	}
+
+	result = card_acquire();
+	if (result != 0) {
+		return result;
 	}
 
 	if ((track < 0) || ((size_t)track >= lib_count)) {
-		err = -ENOENT;
+		result = -ENOENT;
 	} else {
-		/* A carga integral é a issue #11. O que ela precisa daqui já
-		 * existe: o nome do arquivo de cada faixa está em lib_files.
-		 */
-		err = -ENOTSUP;
+		result = load_file(lib_files[track], buf, len);
 	}
 
+	/* Devolvido aqui, e não depois de tocar: a partir deste ponto a faixa
+	 * está inteira em RAM, e o cartão pode sair do soquete sem que a
+	 * reprodução perceba (RNF07).
+	 */
 	card_release();
 
-	return err;
+	if (result == -EFBIG) {
+		LOG_WRN("Faixa %d recusada: maior que %zu B", track, len);
+	} else if (result < 0) {
+		LOG_ERR("Carga da faixa %d falhou: %d", track, result);
+	}
+
+	return result;
 }
 
 bool storage_present(void)

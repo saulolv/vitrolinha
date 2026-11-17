@@ -46,6 +46,9 @@ static bool failing_init;
 static bool failing_read;
 static bool failing_deinit;
 
+/** @brief Chamadas de leitura recebidas. Ver @ref fake_disk_reads. */
+static unsigned int reads;
+
 /**
  * @brief Acessos que o cartão ainda atende antes de sair do soquete.
  *
@@ -103,6 +106,7 @@ static int fake_read(struct disk_info *disk, uint8_t *buf, uint32_t start, uint3
 {
 	ARG_UNUSED(disk);
 
+	reads++;
 	count_access();
 
 	if (!inserted || failing_read) {
@@ -244,6 +248,11 @@ void fake_disk_fail_deinit(bool failing)
 void fake_disk_eject_after(unsigned int accesses)
 {
 	eject_countdown = (int)accesses;
+}
+
+unsigned int fake_disk_reads(void)
+{
+	return reads;
 }
 
 void fake_disk_reset(void)
