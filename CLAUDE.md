@@ -468,9 +468,14 @@ tentativa no `prj.conf`.
 
 - Nenhuma chamada de sistema de arquivos, de I²C ou de LVGL na thread `player`
   nem no callback do timer.
-- No callback do timer, só `pwm_set_cycles`, `k_msgq_get` com `K_NO_WAIT`,
-  `k_timer_start` e escrita no instantâneo. Nada que durma, registre log ou
-  aloque.
+- No callback do timer, só o que roda em interrupção sem esperar: o ajuste de
+  tom (`pwm_set_cycles` na placa, o registro em RAM no simulador), `k_msgq_get`
+  com `K_NO_WAIT`, `k_timer_start`/`k_timer_stop`, o spinlock que serializa o
+  callback com a thread `player`, o `k_sem_give` com que `loader_next_event`
+  pede reposição da fila, e `snapshot_publish`, que é escrita sob seqlock.
+  Nenhuma delas dorme: o spinlock só mascara interrupções por algumas
+  instruções, o `k_sem_give` nunca bloqueia quem dá, e o seqlock não faz o
+  escritor esperar o leitor. Nada que durma, registre log ou aloque.
 - O redesenho da UI é limitado por taxa fixa e nunca dispara por nota.
 - Buffers de tamanho fixo: o uso de RAM não depende do tamanho do arquivo.
 - Escrever o parser RTTTL, não importar biblioteca pronta — é entregável do
