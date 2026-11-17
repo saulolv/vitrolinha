@@ -25,15 +25,30 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/snapshot.c
   ${CMAKE_CURRENT_LIST_DIR}/track.c
   ${CMAKE_CURRENT_LIST_DIR}/display.c
+  ${CMAKE_CURRENT_LIST_DIR}/parser_csv.c
+  ${CMAKE_CURRENT_LIST_DIR}/loader.c
 )
 
-# Implementação de mentira do storage: duas faixas embutidas no binário.
-# Quando o storage do cartão existir (issues #10 e #11), vira uma escolha entre
-# as duas; hoje há uma só, e antecipar o Kconfig da escolha seria configurar um
-# seletor de uma opção.
-target_sources(app PRIVATE
-  ${CMAKE_CURRENT_LIST_DIR}/storage_fake.c
-)
+# A saída implementada nesta etapa é a captura no computador. O player
+# entra junto dela; a placa ainda precisa de uma implementação tone_pwm.
+if(CONFIG_BOARD_NATIVE_SIM AND CONFIG_EXTERNAL_LIBC)
+  target_sources(app PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/player.c
+    ${CMAKE_CURRENT_LIST_DIR}/tone_trace.c
+    ${CMAKE_CURRENT_LIST_DIR}/playback_trace.c
+  )
+endif()
+
+# O host usa a libc do computador; placa e testes existentes mantêm o fake.
+option(VITROLINHA_STORAGE_HOST "Ler CSVs de uma pasta no native_sim" OFF)
+if(VITROLINHA_STORAGE_HOST)
+  if(NOT CONFIG_BOARD_NATIVE_SIM OR NOT CONFIG_EXTERNAL_LIBC)
+    message(FATAL_ERROR "storage_host exige native_sim com CONFIG_EXTERNAL_LIBC")
+  endif()
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_host.c)
+else()
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_fake.c)
+endif()
 
 # O cartão. Condicional porque o módulo monta um volume FAT: sem o sistema de
 # arquivos ele não teria o que fazer, e arrastá-lo para dentro dos testes dos
