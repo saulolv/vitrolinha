@@ -26,14 +26,20 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/storage_error.c
   ${CMAKE_CURRENT_LIST_DIR}/track.c
   ${CMAKE_CURRENT_LIST_DIR}/parser_csv.c
-  ${CMAKE_CURRENT_LIST_DIR}/loader.c
 )
 
 # A saída implementada nesta etapa é a captura no computador. O player
 # entra junto dela; a placa ainda precisa de uma implementação tone_pwm.
+#
+# O loader entra junto do player, que é o único a chamá-lo, e não na lista
+# comum: ele define uma thread com pilha própria, o buffer de 4 KB da faixa e
+# a fila de 32 eventos — perto de 9 KB de RAM que, na placa, ficariam
+# reservados para uma thread que nunca parte. O parser_csv fica na lista
+# comum porque não tem estado estático: sem chamador, não custa RAM.
 if(CONFIG_BOARD_NATIVE_SIM AND CONFIG_EXTERNAL_LIBC)
   target_sources(app PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/player.c
+    ${CMAKE_CURRENT_LIST_DIR}/loader.c
     ${CMAKE_CURRENT_LIST_DIR}/tone_trace.c
     ${CMAKE_CURRENT_LIST_DIR}/playback_trace.c
   )
