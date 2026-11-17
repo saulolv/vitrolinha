@@ -69,7 +69,7 @@ static void *setup(void)
 	}
 	zassert_ok(fclose(file));
 	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", directory, 1));
-	zassert_equal(5, storage_scan(tracks, ARRAY_SIZE(tracks)));
+	zassert_equal(5, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
 	zassert_ok(loader_init());
 	zassert_ok(tone_init());
 	return NULL;

@@ -36,8 +36,11 @@ static const char *configured_directory(void)
 }
 
 /** @brief Lista os primeiros CSVs regulares por nome, sem visitar subpastas. */
-int storage_scan(struct track_meta *out, size_t max)
+int storage_scan(struct track_meta *out, size_t max, size_t *skipped)
 {
+	if (skipped != NULL) {
+		*skipped = 0U;
+	}
 	if (out == NULL || max == 0U) {
 		return -EINVAL;
 	}
@@ -57,6 +60,7 @@ int storage_scan(struct track_meta *out, size_t max)
 	}
 
 	size_t capacity = max < LIBRARY_MAX ? max : LIBRARY_MAX;
+	size_t found = 0U;
 	int result = 0;
 
 	for (;;) {
@@ -81,6 +85,7 @@ int storage_scan(struct track_meta *out, size_t max)
 		if (!S_ISREG(info.st_mode)) {
 			continue;
 		}
+		found++;
 
 		/* Inserção limitada: a seleção independe da ordem de readdir. */
 		size_t pos = 0U;
@@ -102,6 +107,9 @@ int storage_scan(struct track_meta *out, size_t max)
 	if (result < 0) {
 		track_count = 0U;
 		return result;
+	}
+	if (skipped != NULL) {
+		*skipped = found - track_count;
 	}
 	for (size_t i = 0; i < track_count; i++) {
 		track_meta_init(&out[i], i, filenames[i], strlen(filenames[i]) - 4U, true);

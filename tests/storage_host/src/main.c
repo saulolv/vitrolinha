@@ -30,7 +30,7 @@ static void before(void *fixture)
 	directory_fd = open(directory, O_RDONLY | O_DIRECTORY);
 	zassert_true(directory_fd >= 0);
 	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", directory, 1));
-	zassert_equal(0, storage_scan(tracks, ARRAY_SIZE(tracks)));
+	zassert_equal(0, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
 }
 
 static void after(void *fixture)
@@ -76,9 +76,9 @@ ZTEST(storage_host, test_listagem_e_leitura_csv)
 	write_file("ignorar.txt", csv, sizeof(csv) - 1U);
 	zassert_ok(mkdirat(directory_fd, "subpasta.csv", 0700));
 	zassert_ok(symlinkat("alfa.csv", directory_fd, "atalho.csv"));
-	zassert_equal(1, storage_scan(tracks, 1));
+	zassert_equal(1, storage_scan(tracks, 1, NULL));
 	zassert_str_equal("alfa", tracks[0].name);
-	zassert_equal(3, storage_scan(tracks, ARRAY_SIZE(tracks)));
+	zassert_equal(3, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
 	zassert_str_equal("alfa", tracks[0].name);
 	zassert_str_equal("beta", tracks[1].name);
 	zassert_str_equal("zeta", tracks[2].name);
@@ -111,7 +111,7 @@ ZTEST(storage_host, test_limites_de_biblioteca_e_buffer)
 		snprintf(name, sizeof(name), "c%02d.csv", i);
 		write_file(name, csv, sizeof(csv) - 1U);
 	}
-	zassert_equal(LIBRARY_MAX, storage_scan(tracks, ARRAY_SIZE(tracks)));
+	zassert_equal(LIBRARY_MAX, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
 	zassert_str_equal("a", tracks[0].name);
 	zassert_str_equal("c29", tracks[LIBRARY_MAX - 1U].name);
 	zassert_equal(STORAGE_FILE_MAX, storage_load(0, buffer, STORAGE_FILE_MAX));
@@ -132,15 +132,15 @@ ZTEST(storage_host, test_pasta_vazia_e_ausente)
 	char missing[sizeof(directory) + 16U];
 
 	zassert_true(storage_present());
-	zassert_equal(0, storage_scan(tracks, ARRAY_SIZE(tracks)));
+	zassert_equal(0, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
 	write_file("teste.csv", csv, sizeof(csv) - 1U);
-	zassert_equal(1, storage_scan(tracks, ARRAY_SIZE(tracks)));
+	zassert_equal(1, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
 	zassert_ok(unlinkat(directory_fd, "teste.csv", 0));
 	zassert_equal(-ENOENT, storage_load(0, buffer, sizeof(buffer)));
 
 	snprintf(missing, sizeof(missing), "%s/ausente", directory);
 	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", missing, 1));
-	zassert_equal(-ENODEV, storage_scan(tracks, ARRAY_SIZE(tracks)));
+	zassert_equal(-ENODEV, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
 	zassert_false(storage_present());
 	zassert_equal(-ENOENT, storage_load(0, buffer, sizeof(buffer)));
 }
