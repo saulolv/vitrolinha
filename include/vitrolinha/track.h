@@ -61,7 +61,7 @@ struct track_meta {
 	char name[TRACK_NAME_MAX];
 
 	/** @brief Posição na biblioteca, de 0 a LIBRARY_MAX-1. */
-	uint8_t index;
+	size_t index;
 
 	/**
 	 * @brief Falso se o interpretador rejeitou o arquivo, ou se a
@@ -116,7 +116,7 @@ size_t track_name_copy(char *dst, size_t dst_size, const char *src, size_t src_l
  * @param name_len Quantos bytes de @p name considerar.
  * @param valid Se o interpretador aceitou o arquivo.
  */
-void track_meta_init(struct track_meta *meta, uint8_t index, const char *name,
+void track_meta_init(struct track_meta *meta, size_t index, const char *name,
 		     size_t name_len, bool valid);
 
 #ifdef __cplusplus

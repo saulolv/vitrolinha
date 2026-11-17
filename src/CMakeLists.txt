@@ -25,6 +25,7 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/snapshot.c
   ${CMAKE_CURRENT_LIST_DIR}/storage_error.c
   ${CMAKE_CURRENT_LIST_DIR}/track.c
+  ${CMAKE_CURRENT_LIST_DIR}/display.c
 )
 
 # Quem responde ao storage.h: o cartão ou a implementação de mentira, com duas

@@ -18,6 +18,7 @@
 
 #include <vitrolinha/card.h>
 #include <vitrolinha/cmd.h>
+#include <vitrolinha/display.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/track.h>
@@ -25,9 +26,12 @@
 #include <app_version.h>
 
 #include <zephyr/devicetree.h>
+#include <zephyr/drivers/display.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+
+#define CONFIG_BOARD_ZBOOK
 
 LOG_MODULE_REGISTER(vitrolinha, LOG_LEVEL_INF);
 
@@ -226,6 +230,11 @@ int main(void)
 	LOG_INF("Vitrolinha %s em " CONFIG_BOARD_TARGET, APP_VERSION_STRING);
 
 	err = heartbeat_init();
+	if (err != 0) {
+		return err;
+	}
+
+	err = display_init();
 	if (err != 0) {
 		return err;
 	}
