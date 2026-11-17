@@ -13,6 +13,23 @@
 #include <errno.h>
 #include <zephyr/kernel.h>
 
+/**
+ * @brief Pilha do worker.
+ *
+ * Com folga por ora: é esta thread que atravessa o storage e o parser. O
+ * número definitivo sai da medição do `CONFIG_THREAD_ANALYZER`, como o das
+ * demais threads — não de estimativa.
+ */
+#define LOADER_STACK_SIZE 4096
+
+/**
+ * @brief Prioridade do worker: baixa, abaixo do `player`.
+ *
+ * O worker faz a E/S de carga e repõe a fila de eventos; quem não pode
+ * esperar por ele é o `player`, que só consome a fila já pronta.
+ */
+#define LOADER_PRIORITY 8
+
 K_MSGQ_DEFINE(events, sizeof(struct playback_event), 32, 4);
 K_SEM_DEFINE(work, 0, 1);
 static struct k_spinlock lock;
@@ -119,7 +136,8 @@ static void loader_worker(void *a, void *b, void *c)
 	}
 }
 
-K_THREAD_DEFINE(loader_thread, 4096, loader_worker, NULL, NULL, NULL, 8, 0, SYS_FOREVER_MS);
+K_THREAD_DEFINE(loader_thread, LOADER_STACK_SIZE, loader_worker, NULL, NULL, NULL,
+		LOADER_PRIORITY, 0, SYS_FOREVER_MS);
 
 int loader_init(void)
 {

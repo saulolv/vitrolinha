@@ -14,6 +14,22 @@
 #include <errno.h>
 #include <zephyr/kernel.h>
 
+/**
+ * @brief Pilha da thread `player`.
+ *
+ * A thread só mexe em estado em RAM, sem E/S nem gráficos. O número
+ * definitivo sai da medição do `CONFIG_THREAD_ANALYZER` — não de estimativa.
+ */
+#define PLAYER_STACK_SIZE 2048
+
+/**
+ * @brief Prioridade do `player`: alta, acima do loader e da interface.
+ *
+ * Acima do worker do loader (8) e da fila de trabalho do LVGL (10), para que
+ * nenhuma carga ou redesenho atrase um comando de transporte.
+ */
+#define PLAYER_PRIORITY 4
+
 static struct k_spinlock lock;
 static struct k_timer timer;
 static struct player_snapshot state = SNAPSHOT_IDLE_INITIALIZER;
@@ -203,7 +219,8 @@ static void player_worker(void *a, void *b, void *c)
 	}
 }
 
-K_THREAD_DEFINE(player_thread, 2048, player_worker, NULL, NULL, NULL, 4, 0, SYS_FOREVER_MS);
+K_THREAD_DEFINE(player_thread, PLAYER_STACK_SIZE, player_worker, NULL, NULL, NULL,
+		PLAYER_PRIORITY, 0, SYS_FOREVER_MS);
 
 int player_init(size_t track_count)
 {
