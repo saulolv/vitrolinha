@@ -18,6 +18,7 @@
 
 #include <vitrolinha/card.h>
 #include <vitrolinha/cmd.h>
+#include <vitrolinha/library.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/track.h>
@@ -79,20 +80,25 @@ static int heartbeat_init(void)
 }
 
 /**
- * @brief Anuncia toda mudança de estado do cartão.
+ * @brief Leva toda mudança de estado do cartão à biblioteca.
  *
- * Aqui só imprime. Quando a interface existir, é por este caminho que a tela
- * de erro aparece e some (issues #29 e #30).
+ * Roda na thread do monitor do cartão, e varre ali mesmo: é a thread que já
+ * bloqueia por natureza, e a única de prioridade baixa o bastante para isso
+ * não atrasar ninguém (ADR 0010). A interface lê o resultado em
+ * @ref library_state a cada quadro.
  *
- * @param state O estado novo.
+ * @param state O estado novo do cartão.
  */
 static void card_changed(enum card_state state)
 {
 	LOG_INF("Cartao mudou para: %s", card_state_name(state));
+
+	(void)library_refresh();
 }
 
 /**
- * @brief Monta o cartão e põe o monitor de presença de pé.
+ * @brief Monta o cartão, põe o monitor de presença de pé e varre a
+ *        biblioteca.
  *
  * Ausência de cartão não é falha de inicialização: a placa continua ligando,
  * e o monitor passa a avisar se um cartão aparecer.
@@ -101,45 +107,54 @@ static void card_report(void)
 {
 	int err;
 
-	/* Observar antes de inicializar, para não perder a transição de quem
-	 * liga a placa com o cartão já no soquete.
-	 */
-	card_observe(card_changed);
-
 	err = card_init();
 	if (err != 0) {
 		LOG_ERR("Monitor do cartao nao subiu: %d", err);
-		return;
 	}
+
+	/* Observar **depois** de inicializar, e varrer em seguida. O contrato
+	 * do card sugere a ordem inversa, para receber a transição inicial,
+	 * mas aqui ela faria a biblioteca ser varrida duas vezes no boot: uma
+	 * pelo observador, dentro de card_init, e outra pela varredura
+	 * explícita — que não pode faltar, porque no simulador o cartão nunca
+	 * transita e quem responde é a implementação de mentira.
+	 *
+	 * A ordem não abre janela: o monitor dorme 250 ms antes da primeira
+	 * sondagem, e qualquer transição depois de card_observe chega ao
+	 * observador. No pior caso, uma varredura a mais.
+	 */
+	card_observe(card_changed);
+	(void)library_refresh();
 
 	LOG_INF("Cartao: %s (ponto de montagem %s)", card_state_name(card_get_state()),
 		CARD_MOUNT_POINT);
 }
 
 /**
- * @brief Exercita o contrato do @ref storage.h e lista a biblioteca no log.
+ * @brief Exercita o contrato do @ref library.h e lista a biblioteca no log.
  *
  * Quem responde depende do alvo: na placa, o cartão que o @ref card_report
  * acabou de montar; no simulador, a implementação de mentira, com duas faixas
  * embutidas. Esta função não sabe qual das duas — é o que a fronteira do
  * @ref storage.h compra.
  *
- * @return Quantidade de faixas encontradas, ou erro negativo do contrato.
+ * @return Quantidade de faixas encontradas, ou `-ENODEV` sem biblioteca.
  */
 static int library_report(void)
 {
 	static struct track_meta library[LIBRARY_MAX];
 	static uint8_t buf[STORAGE_FILE_MAX];
+	enum library_state state = library_state();
 	size_t skipped;
 	int count;
 
-	LOG_INF("Biblioteca: %s", storage_present() ? "disponivel" : "indisponivel");
-
-	count = storage_scan(library, ARRAY_SIZE(library), &skipped);
-	if (count < 0) {
-		LOG_ERR("Varredura falhou: %d", count);
-		return count;
+	/* É este texto que a tela de erro vai mostrar (issue #30). */
+	if (state != LIBRARY_READY) {
+		LOG_WRN("Biblioteca: %s", library_state_text(state));
+		return -ENODEV;
 	}
+
+	count = library_copy(library, ARRAY_SIZE(library), &skipped);
 
 	LOG_INF("Biblioteca: %d faixa(s)", count);
 
@@ -149,7 +164,7 @@ static int library_report(void)
 	}
 
 	for (int i = 0; i < count; i++) {
-		int size = storage_load(i, buf, sizeof(buf));
+		int size = library_load(i, buf, sizeof(buf), NULL);
 
 		/* A mensagem é a mesma que a tela de erro vai mostrar. */
 		if (size < 0) {

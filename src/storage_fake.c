@@ -58,6 +58,9 @@ static bool fake_present = true;
 /** @brief Cartão respondendo? Manipulado por @ref storage_fake_set_failing. */
 static bool fake_failing;
 
+/** @brief Erro armado para a próxima carga. Ver @ref storage_fake_fail_next_load. */
+static int fake_next_load_error;
+
 /**
  * @brief Traduz o estado simulado do cartão em código de erro.
  *
@@ -90,10 +93,16 @@ void storage_fake_set_failing(bool failing)
 	fake_failing = failing;
 }
 
+void storage_fake_fail_next_load(int err)
+{
+	fake_next_load_error = err;
+}
+
 void storage_fake_reset(void)
 {
 	fake_present = true;
 	fake_failing = false;
+	fake_next_load_error = 0;
 }
 
 int storage_scan(struct track_meta *out, size_t max, size_t *skipped)
@@ -153,6 +162,12 @@ int storage_load(int track, uint8_t *buf, size_t len)
 
 	status = fake_card_status();
 	if (status != 0) {
+		return status;
+	}
+
+	if (fake_next_load_error != 0) {
+		status = fake_next_load_error;
+		fake_next_load_error = 0;
 		return status;
 	}
 

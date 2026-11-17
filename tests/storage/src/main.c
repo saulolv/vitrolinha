@@ -270,6 +270,31 @@ ZTEST(storage, test_carga_com_cartao_mudo)
 	zassert_equal(-EIO, storage_load(0, buf, sizeof(buf)));
 }
 
+ZTEST(storage, test_falha_de_carga_armada_vale_uma_vez)
+{
+	uint8_t buf[STORAGE_FILE_MAX];
+
+	storage_fake_fail_next_load(-ENOENT);
+
+	zassert_equal(-ENOENT, storage_load(0, buf, sizeof(buf)));
+	zassert_true(storage_load(0, buf, sizeof(buf)) > 0, "a falha nao foi consumida");
+}
+
+ZTEST(storage, test_falha_de_carga_armada_espera_o_cartao)
+{
+	uint8_t buf[STORAGE_FILE_MAX];
+
+	/* Sem cartão a carga nem chega ao arquivo: a falha armada fica para
+	 * a primeira que chegar.
+	 */
+	storage_fake_fail_next_load(-EFBIG);
+	storage_fake_set_present(false);
+	zassert_equal(-ENODEV, storage_load(0, buf, sizeof(buf)));
+
+	storage_fake_set_present(true);
+	zassert_equal(-EFBIG, storage_load(0, buf, sizeof(buf)));
+}
+
 /* -------------------------------------------------------------------------
  * Mensagens de erro
  * ------------------------------------------------------------------------- */
