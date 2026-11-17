@@ -1,0 +1,7 @@
+# Este teste escolhe a origem da biblioteca: sem enxergar as opções do
+# projeto, o src/CMakeLists.txt compilaria a implementação de mentira em vez
+# da que lê CSVs de uma pasta do computador.
+
+rsource "../../Kconfig.vitrolinha"
+
+source "Kconfig.zephyr"

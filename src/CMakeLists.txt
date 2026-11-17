@@ -39,21 +39,17 @@ if(CONFIG_BOARD_NATIVE_SIM AND CONFIG_EXTERNAL_LIBC)
   )
 endif()
 
-# Quem responde ao storage.h: o cartão ou a implementação de mentira, com duas
-# faixas embutidas no binário. A escolha é do Kconfig.vitrolinha — cartão na
-# placa, mentira no simulador, que não tem disco.
+# Quem responde ao storage.h: o cartão, a implementação de mentira com duas
+# faixas embutidas no binário, ou os CSVs de uma pasta do computador. A escolha
+# é do Kconfig.vitrolinha — cartão na placa, mentira no simulador, que não tem
+# disco; a pasta só existe no simulador e só quando pedida.
 #
 # O `else` é a mentira, e não a ausência de storage, por causa dos testes: um
 # teste só enxerga as opções do projeto se tiver um Kconfig próprio que as
-# inclua, e só tests/storage_card/ tem. Os demais não enxergam a escolha e
-# caem aqui, com a mentira — que é o que eles usavam antes de ela existir.
-#
-# O host usa a libc do computador e lê CSVs de uma pasta; só no native_sim.
-option(VITROLINHA_STORAGE_HOST "Ler CSVs de uma pasta no native_sim" OFF)
-if(VITROLINHA_STORAGE_HOST)
-  if(NOT CONFIG_BOARD_NATIVE_SIM OR NOT CONFIG_EXTERNAL_LIBC)
-    message(FATAL_ERROR "storage_host exige native_sim com CONFIG_EXTERNAL_LIBC")
-  endif()
+# inclua, como tests/storage_card/ e tests/storage_host/. Os demais não
+# enxergam a escolha e caem aqui, com a mentira — que é o que eles usavam
+# antes de ela existir.
+if(CONFIG_VITROLINHA_STORAGE_HOST)
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_host.c)
 elseif(CONFIG_VITROLINHA_STORAGE_CARD)
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage.c)
