@@ -21,29 +21,28 @@ como vetores de bytes, sem terminador NUL.
 As frequências aceitas pelo parser não são uma promessa de suporte físico
 do buzzer. Essa verificação pertence à futura implementação de `tone`.
 
-## Executar no workspace
+## Executar
+
+As suítes desta trilha (`parser_csv`, `playback`, `storage_host`) declaram
+as duas variantes do simulador, `native_sim` (32 bits) e
+`native_sim/native/64`. O `scripts/test.sh` e o CI rodam todas as suítes em
+`native_sim`, com cobertura e com o portão `scripts/coverage_gate.py`:
 
 ```bash
-west twister -p native_sim/native/64 \
-  -T vitrolinha/tests/parser_csv \
-  --outdir twister-out-parser-csv --inline-logs
+scripts/test.sh               # todas as suítes, cobertura e portão
+scripts/test.sh --no-coverage # só os testes
 ```
 
-Para executar também as suítes existentes na variante de 64 bits:
+Para rodar só esta suíte, dentro do workspace (`scripts/zephyr.sh bash`):
 
 ```bash
-west twister -p native_sim/native/64 --force-platform \
-  -T vitrolinha/tests \
-  --outdir twister-out-csv-regression --inline-logs
+west twister -p native_sim -T vitrolinha/tests/parser_csv   --outdir twister-out-parser-csv --inline-logs
 ```
 
-É possível acrescentar `--enable-ubsan` para verificar comportamento
-indefinido. Para cobertura, disponibilize `gcovr` no PATH e acrescente
-`--coverage --coverage-tool gcovr --coverage-basedir vitrolinha`.
-Com esta versão do Twister, defina `ZEPHYR_TOOLCHAIN_VARIANT=zephyr` ao
-executar com cobertura, pois a seleção do gcov consulta essa variável.
+Trocar `-p native_sim` por `-p native_sim/native/64` roda a variante de 64
+bits; repetir `-p` roda as duas. É possível acrescentar `--enable-ubsan` para
+verificar comportamento indefinido.
 
-O portão global de cobertura ainda exige a integração dos outros cinco
-esqueletos em `src/` (`loader`, `player`, `storage_host`, `tone_trace` e
-`playback_trace`). Eles não foram implementados nem excluídos da medição
-como parte desta etapa do parser.
+O portão de cobertura mede todo `src/`, inclusive `loader`, `player`,
+`storage_host`, `tone_trace` e `playback_trace`, que estes testes e os de
+`tests/playback/` e `tests/storage_host/` exercitam.
