@@ -131,7 +131,7 @@ static int library_report(void) {
     static uint8_t buf[STORAGE_FILE_MAX];
     int count;
 
-	LOG_INF("Faixas: %s",
+    LOG_INF("Faixas: %s",
 		storage_present() ? "disponiveis" : "indisponiveis");
 
     count = storage_scan(library, ARRAY_SIZE(library));
