@@ -123,10 +123,19 @@ CONFIG_FS_FATFS_NUM_DIRS=2
 
 CONFIG_THREAD_ANALYZER=y                     # critério de avaliação: pilha por thread
 CONFIG_THREAD_ANALYZER_AUTO=y
-CONFIG_THREAD_ANALYZER_PRINT_THREAD_PRIORITY=y
 CONFIG_THREAD_ANALYZER_AUTO_THREAD_PRIORITY_OVERRIDE=y
 CONFIG_THREAD_ANALYZER_AUTO_THREAD_PRIORITY=10   # o padrão também é 0
+CONFIG_THREAD_ANALYZER_RUN_UNLOCKED=y        # padrão; travado, a varredura atrasaria o tick da nota
+CONFIG_THREAD_ANALYZER_ISR_STACK_USAGE=y     # padrão; o callback das notas roda na pilha de ISR
+CONFIG_LOG_BUFFER_SIZE=4096                  # o relatório inteiro tem de caber no log diferido
 ```
+
+O analisador fica em `boards/zbook_rp2350b_m33_p2.conf`, não em `prj.conf`:
+ele depende de `!ARCH_POSIX` e não existe no simulador.
+**`CONFIG_THREAD_ANALYZER_PRINT_THREAD_PRIORITY` não existe no Zephyr
+v4.4.2**, e atribuir símbolo inexistente reprova o build — a prioridade sai do
+`kernel thread list` do shell. Método, folgas e roteiro em
+[`docs/medicoes/pilhas-por-thread.md`](docs/medicoes/pilhas-por-thread.md).
 
 **`CONFIG_LV_Z_LVGL_WORKQUEUE_PRIORITY` tem padrão 0**, a maior prioridade
 preemptível. Deixado assim, o laço do LVGL **sobrepuja qualquer thread do
@@ -375,6 +384,30 @@ sistema é **cooperativa** (`CONFIG_SYSTEM_WORKQUEUE_PRIORITY=-1`), o que faria
 uma montagem segurar o `player`. Ver a [ADR
 0007](docs/adr/0007-monitor-do-cartao-em-thread-propria.md).
 
+O ponto de montagem é **`"/SD:"`, com os dois-pontos**. Sem eles a montagem
+funciona e nenhum arquivo abre: o FatFs só reconhece o volume pelo prefixo
+`SD:`, e lê `SD/FURELIS.TXT` como um subdiretório `SD`.
+
+Quem lê o volume **pega emprestado**: `card_acquire()`/`card_release()`
+seguram a trava do `card`, e o monitor não desmonta no meio de uma leitura. O
+FatFs roda sem reentrância e o `fs_read` não trava nada, então sem o
+empréstimo um cartão puxado no meio da varredura seria desmontado por baixo
+dela. Ver a [ADR 0009](docs/adr/0009-a-varredura-empresta-o-volume.md).
+
+A varredura (`src/storage.c`) lê só a raiz, só `.TXT`/`.RTX`/`.RTT`, **na ordem
+do diretório** — é ela que dá sentido a "o 33.º arquivo é ignorado". Arquivo
+sem cabeçalho legível, vazio ou maior que 4 KB entra na lista como inválido,
+com o nome 8.3. No simulador, que não tem disco, o
+`CONFIG_VITROLINHA_STORAGE` põe a implementação de mentira no lugar.
+
+A carga (`storage_load`) lê o arquivo **inteiro** e confere o tamanho na
+entrada de diretório **antes** de ler: o arquivo maior que o buffer volta
+`-EFBIG` sem escrever um byte, nunca truncado. O buffer do chamador acima de
+4 KB vale 4 KB, para a carga concordar com a marca `!` da varredura. Ao
+voltar, o volume já foi devolvido e nada fica aberto — o cartão pode sair na
+nota seguinte. O texto de tela de cada erro sai de `storage_error_text()`, um
+só para as duas implementações.
+
 ### Quem é o dono do relógio
 
 A UI precisa do tempo decorrido sem interrogar o `player` a cada quadro. A
@@ -517,7 +550,8 @@ Instrumentar chaveando um dos LEDs 0-3 (GPIO 24-27) e medindo no terminal do LED
 já que não há pino de header confirmado. Manter na biblioteca um arquivo de
 calibração no formato CSV com N notas idênticas de duração conhecida. Usar
 `CONFIG_THREAD_ANALYZER` para o consumo de pilha por thread, que é critério de
-avaliação — e `k_cycle_get_64()`, não a versão de 32 bits, que dá a volta a cada
+avaliação — a tabela sai do console da placa com `scripts/stack_report.py`,
+pela regra de folga de `docs/medicoes/pilhas-por-thread.md` — e `k_cycle_get_64()`, não a versão de 32 bits, que dá a volta a cada
 28,6 s a 150 MHz e arruinaria uma medição de 60 s.
 
 ## Escopo em etapas

@@ -7,9 +7,9 @@
  * reproduzem com hardware de verdade sem alguém puxar o cartão no
  * milissegundo certo.
  *
- * Quando esta implementação for trocada pela do cartão (issues #10 e #11),
- * este arquivo continua descrevendo o contrato — o que muda é quem o
- * cumpre.
+ * A implementação do cartão cumpre o mesmo contrato e tem a sua bateria em
+ * tests/storage_card/, sobre um disco que o teste põe e tira. Esta aqui
+ * segue valendo porque a mentira continua no binário do simulador.
  */
 
 #include <vitrolinha/storage.h>
@@ -65,7 +65,7 @@ ZTEST(storage, test_cartao_mudo_continua_presente)
 ZTEST(storage, test_varredura_devolve_as_faixas_embutidas)
 {
 	struct track_meta library[LIBRARY_MAX];
-	int count = storage_scan(library, ARRAY_SIZE(library));
+	int count = storage_scan(library, ARRAY_SIZE(library), NULL);
 
 	zassert_equal((int)STORAGE_FAKE_TRACK_COUNT, count);
 	zassert_str_equal("Fur Elise", library[0].name);
@@ -75,7 +75,7 @@ ZTEST(storage, test_varredura_devolve_as_faixas_embutidas)
 ZTEST(storage, test_varredura_numera_as_faixas_em_ordem)
 {
 	struct track_meta library[LIBRARY_MAX];
-	int count = storage_scan(library, ARRAY_SIZE(library));
+	int count = storage_scan(library, ARRAY_SIZE(library), NULL);
 
 	for (int i = 0; i < count; i++) {
 		zassert_equal((uint8_t)i, library[i].index,
@@ -88,8 +88,42 @@ ZTEST(storage, test_varredura_respeita_a_capacidade_do_chamador)
 {
 	struct track_meta library[1];
 
-	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library)));
+	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
 	zassert_str_equal("Fur Elise", library[0].name);
+}
+
+ZTEST(storage, test_varredura_conta_o_que_nao_coube)
+{
+	struct track_meta library[1];
+	size_t skipped = 99U;
+
+	/* É deste número que sai o aviso de biblioteca cheia na tela. */
+	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), &skipped));
+	zassert_equal(STORAGE_FAKE_TRACK_COUNT - 1U, skipped);
+}
+
+ZTEST(storage, test_varredura_sem_excedente)
+{
+	struct track_meta library[LIBRARY_MAX];
+	size_t skipped = 99U;
+
+	zassert_equal((int)STORAGE_FAKE_TRACK_COUNT,
+		      storage_scan(library, ARRAY_SIZE(library), &skipped));
+	zassert_equal(0U, skipped);
+}
+
+ZTEST(storage, test_varredura_que_falha_zera_o_excedente)
+{
+	struct track_meta library[LIBRARY_MAX];
+	size_t skipped = 99U;
+
+	/* Um valor velho no excedente faria a tela avisar de uma biblioteca
+	 * cheia que não existe.
+	 */
+	storage_fake_set_present(false);
+
+	zassert_equal(-ENODEV, storage_scan(library, ARRAY_SIZE(library), &skipped));
+	zassert_equal(0U, skipped);
 }
 
 ZTEST(storage, test_varredura_limita_ao_teto_da_biblioteca)
@@ -101,15 +135,15 @@ ZTEST(storage, test_varredura_limita_ao_teto_da_biblioteca)
 	 * previsível (RNF06).
 	 */
 	zassert_equal((int)STORAGE_FAKE_TRACK_COUNT,
-		      storage_scan(library, LIBRARY_MAX * 4U));
+		      storage_scan(library, LIBRARY_MAX * 4U, NULL));
 }
 
 ZTEST(storage, test_varredura_recusa_argumentos_invalidos)
 {
 	struct track_meta library[LIBRARY_MAX];
 
-	zassert_equal(-EINVAL, storage_scan(NULL, ARRAY_SIZE(library)));
-	zassert_equal(-EINVAL, storage_scan(library, 0U));
+	zassert_equal(-EINVAL, storage_scan(NULL, ARRAY_SIZE(library), NULL));
+	zassert_equal(-EINVAL, storage_scan(library, 0U, NULL));
 }
 
 ZTEST(storage, test_varredura_sem_cartao)
@@ -118,7 +152,7 @@ ZTEST(storage, test_varredura_sem_cartao)
 
 	storage_fake_set_present(false);
 
-	zassert_equal(-ENODEV, storage_scan(library, ARRAY_SIZE(library)));
+	zassert_equal(-ENODEV, storage_scan(library, ARRAY_SIZE(library), NULL));
 }
 
 ZTEST(storage, test_varredura_com_cartao_mudo)
@@ -127,7 +161,7 @@ ZTEST(storage, test_varredura_com_cartao_mudo)
 
 	storage_fake_set_failing(true);
 
-	zassert_equal(-EIO, storage_scan(library, ARRAY_SIZE(library)));
+	zassert_equal(-EIO, storage_scan(library, ARRAY_SIZE(library), NULL));
 }
 
 ZTEST(storage, test_ausencia_tem_precedencia_sobre_falha)
@@ -140,7 +174,7 @@ ZTEST(storage, test_ausencia_tem_precedencia_sobre_falha)
 	storage_fake_set_present(false);
 	storage_fake_set_failing(true);
 
-	zassert_equal(-ENODEV, storage_scan(library, ARRAY_SIZE(library)));
+	zassert_equal(-ENODEV, storage_scan(library, ARRAY_SIZE(library), NULL));
 }
 
 /* -------------------------------------------------------------------------
@@ -207,6 +241,17 @@ ZTEST(storage, test_carga_nao_escreve_ao_rejeitar)
 	}
 }
 
+ZTEST(storage, test_buffer_maior_que_o_teto_carrega_igual)
+{
+	static uint8_t roomy[2U * STORAGE_FILE_MAX];
+
+	/* A capacidade acima do teto é tratada como o teto. As faixas
+	 * embutidas cabem nele, então a carga sai como sairia com o buffer de
+	 * faixa — o caso da recusa é exercitado na implementação do cartão.
+	 */
+	zassert_true(storage_load(0, roomy, sizeof(roomy)) > 0);
+}
+
 ZTEST(storage, test_carga_sem_cartao)
 {
 	uint8_t buf[STORAGE_FILE_MAX];
@@ -223,4 +268,50 @@ ZTEST(storage, test_carga_com_cartao_mudo)
 	storage_fake_set_failing(true);
 
 	zassert_equal(-EIO, storage_load(0, buf, sizeof(buf)));
+}
+
+/* -------------------------------------------------------------------------
+ * Mensagens de erro
+ * ------------------------------------------------------------------------- */
+
+ZTEST(storage, test_mensagens_cabem_numa_linha_da_tela)
+{
+	static const int codes[] = {-ENODEV, -EIO, -EFBIG, -ENOENT, -EINVAL, 0, -ENOTSUP};
+
+	/* 16 colunas com a UNSCII-8: uma mensagem maior quebraria a linha ou
+	 * seria cortada pelo rótulo.
+	 */
+	for (size_t i = 0U; i < ARRAY_SIZE(codes); i++) {
+		const char *text = storage_error_text(codes[i]);
+
+		zassert_not_null(text, "codigo %d sem mensagem", codes[i]);
+		zassert_true(strlen(text) <= 16U, "\"%s\" nao cabe na tela", text);
+	}
+}
+
+ZTEST(storage, test_cada_erro_do_contrato_tem_mensagem_propria)
+{
+	static const int codes[] = {-ENODEV, -EIO, -EFBIG, -ENOENT, -EINVAL};
+	const char *generic = storage_error_text(-ENOTSUP);
+
+	/* "Sem cartao" e "Erro de leitura" pedem gestos diferentes de quem
+	 * olha a tela; uma mensagem só para os dois esconderia isso.
+	 */
+	for (size_t i = 0U; i < ARRAY_SIZE(codes); i++) {
+		zassert_true(strcmp(generic, storage_error_text(codes[i])) != 0,
+			     "codigo %d caiu na mensagem generica", codes[i]);
+
+		for (size_t j = i + 1U; j < ARRAY_SIZE(codes); j++) {
+			zassert_true(strcmp(storage_error_text(codes[i]),
+					    storage_error_text(codes[j])) != 0,
+				     "codigos %d e %d com a mesma mensagem", codes[i], codes[j]);
+		}
+	}
+}
+
+ZTEST(storage, test_carga_recusada_tem_mensagem)
+{
+	uint8_t buf[8];
+
+	zassert_str_equal("Maior que 4 KB", storage_error_text(storage_load(0, buf, sizeof(buf))));
 }

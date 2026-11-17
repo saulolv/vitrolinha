@@ -31,20 +31,6 @@
 LOG_MODULE_REGISTER(card, LOG_LEVEL_INF);
 
 /**
- * @brief Nome do disco, que é o ponto de montagem sem a barra.
- *
- * O subsistema de arquivos quer `"/SD"`, o `disk_access` quer `"SD"`, e o
- * `disk-name` do nó `sdhc0` é o segundo. Derivar um do outro evita a classe
- * de erro em que os dois deixam de casar e a montagem falha sem que nada no
- * código pareça errado.
- *
- * O `+ 1` pula a barra. Que ela exista é invariante do ::CARD_MOUNT_POINT, e
- * não é verificável em `BUILD_ASSERT`: indexar um literal de string não é
- * expressão constante em C.
- */
-#define CARD_DISK_NAME (CARD_MOUNT_POINT + 1)
-
-/**
  * @brief Intervalo entre duas olhadas no pino de detecção.
  *
  * O pino de card-detect não tem interrupção: o `sdhc_spi` o configura como
@@ -114,11 +100,14 @@ static bool card_started;
 static card_observer_t card_observer;
 
 /**
- * @brief Serializa as avaliações.
+ * @brief Serializa as avaliações, e as avaliações com quem usa o volume.
  *
  * A aplicação pode chamar @ref card_refresh enquanto o monitor está no meio
  * de uma montagem. Sem isto, os dois chamariam `fs_mount` sobre o mesmo
  * `fs_mount_t`.
+ *
+ * É também a trava do empréstimo de @ref card_acquire: quem lê o volume a
+ * segura, e o monitor não desmonta por baixo da leitura.
  */
 static K_MUTEX_DEFINE(card_lock);
 
@@ -360,6 +349,31 @@ enum card_state card_get_state(void)
 bool card_ready(void)
 {
 	return card_get_state() == CARD_READY;
+}
+
+int card_acquire(void)
+{
+	enum card_state state;
+
+	(void)k_mutex_lock(&card_lock, K_FOREVER);
+
+	/* Lido com a trava presa: é o único jeito de o estado não mudar entre
+	 * a consulta e o uso do volume.
+	 */
+	state = card_get_state();
+
+	if (state == CARD_READY) {
+		return 0;
+	}
+
+	k_mutex_unlock(&card_lock);
+
+	return (state == CARD_ABSENT) ? -ENODEV : -EIO;
+}
+
+void card_release(void)
+{
+	k_mutex_unlock(&card_lock);
 }
 
 const char *card_state_name(enum card_state state)

@@ -12,7 +12,9 @@
  *    puxar o cartão na hora certa.
  *
  * Este cabeçalho **não** faz parte do contrato: nenhum módulo de produção o
- * inclui, e ele some junto com a implementação de mentira (issues #10 e #11).
+ * inclui. A implementação de mentira só entra no binário quando o
+ * `CONFIG_VITROLINHA_STORAGE_FAKE` a escolhe — no simulador, e nos testes que
+ * não enxergam o Kconfig do projeto.
  *
  * @see docs/especificacao-vitrolinha.md, seção 9
  */

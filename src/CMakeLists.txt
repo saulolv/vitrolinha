@@ -23,6 +23,7 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/cmd.c
   ${CMAKE_CURRENT_LIST_DIR}/seqlock.c
   ${CMAKE_CURRENT_LIST_DIR}/snapshot.c
+  ${CMAKE_CURRENT_LIST_DIR}/storage_error.c
   ${CMAKE_CURRENT_LIST_DIR}/track.c
   ${CMAKE_CURRENT_LIST_DIR}/display.c
   ${CMAKE_CURRENT_LIST_DIR}/parser_csv.c
@@ -46,6 +47,16 @@ if(VITROLINHA_STORAGE_HOST)
     message(FATAL_ERROR "storage_host exige native_sim com CONFIG_EXTERNAL_LIBC")
   endif()
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_host.c)
+# Quem responde ao storage.h: o cartão ou a implementação de mentira, com duas
+# faixas embutidas no binário. A escolha é do Kconfig.vitrolinha — cartão na
+# placa, mentira no simulador, que não tem disco.
+#
+# O `else` é a mentira, e não a ausência de storage, por causa dos testes: um
+# teste só enxerga as opções do projeto se tiver um Kconfig próprio que as
+# inclua, e só tests/storage_card/ tem. Os demais não enxergam a escolha e
+# caem aqui, com a mentira — que é o que eles usavam antes de ela existir.
+if(CONFIG_VITROLINHA_STORAGE_CARD)
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage.c)
 else()
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_fake.c)
 endif()

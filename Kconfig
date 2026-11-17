@@ -1,0 +1,5 @@
+# Kconfig da aplicação: as opções do projeto e, depois delas, as do Zephyr.
+
+rsource "Kconfig.vitrolinha"
+
+source "Kconfig.zephyr"

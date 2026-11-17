@@ -119,34 +119,44 @@ static void card_report(void) {
 /**
  * @brief Exercita o contrato do @ref storage.h e lista a biblioteca no log.
  *
- * A origem depende do build: faixas embutidas (storage_fake) ou CSVs de uma
- * pasta do computador (storage_host). Ambas independem do estado do cartão.
+ * Quem responde depende do alvo: na placa, o cartão que o @ref card_report
+ * acabou de montar; no simulador, a implementação de mentira, com duas faixas
+ * embutidas. Esta função não sabe qual das duas — é o que a fronteira do
+ * @ref storage.h compra.
  *
  * @return Quantidade de faixas encontradas, ou erro negativo do contrato.
  */
-static int library_report(void) {
-    static struct track_meta library[LIBRARY_MAX];
-    static uint8_t buf[STORAGE_FILE_MAX];
-    int count;
+static int library_report(void)
+{
+	static struct track_meta library[LIBRARY_MAX];
+	static uint8_t buf[STORAGE_FILE_MAX];
+	size_t skipped;
+	int count;
 
-    LOG_INF("Faixas: %s", storage_present() ? "disponiveis" : "indisponiveis");
+	LOG_INF("Biblioteca: %s", storage_present() ? "disponivel" : "indisponivel");
 
-    count = storage_scan(library, ARRAY_SIZE(library));
-    if (count < 0) {
-        LOG_ERR("Varredura falhou: %d", count);
-        return count;
-    }
+	count = storage_scan(library, ARRAY_SIZE(library), &skipped);
+	if (count < 0) {
+		LOG_ERR("Varredura falhou: %d", count);
+		return count;
+	}
 
     LOG_INF("Biblioteca: %d faixa(s)", count);
 
-    for (int i = 0; i < count; i++) {
-        int size = storage_load(i, buf, sizeof(buf));
+	/* É este aviso que vira mensagem na tela quando a interface existir. */
+	if (skipped > 0U) {
+		LOG_WRN("Biblioteca cheia: %zu arquivo(s) ignorado(s)", skipped);
+	}
 
-        if (size < 0) {
-            LOG_WRN("  [%u] %-16s  carga falhou: %d", library[i].index,
-                    library[i].name, size);
-            continue;
-        }
+	for (int i = 0; i < count; i++) {
+		int size = storage_load(i, buf, sizeof(buf));
+
+		/* A mensagem é a mesma que a tela de erro vai mostrar. */
+		if (size < 0) {
+			LOG_WRN("  [%u] %-16s  %s (%d)", library[i].index, library[i].name,
+				storage_error_text(size), size);
+			continue;
+		}
 
         LOG_INF("  [%u] %-16s  %d bytes%s", library[i].index, library[i].name,
                 size, library[i].valid ? "" : "  (invalida)");

@@ -88,7 +88,7 @@ todo dia. A biblioteca do simulador vem da implementação de mentira, com duas
 faixas embutidas no binário: o `CONFIG_VITROLINHA_STORAGE` (em
 `Kconfig.vitrolinha`) escolhe o cartão na placa e a mentira no simulador.
 Inserção, remoção e volume ilegível são exercitados em
-[`tests/card/`](tests/card/), e a varredura de verdade em
+[`tests/card/`](tests/card/), e a varredura e a carga de verdade em
 [`tests/storage_card/`](tests/storage_card/), os dois sobre um disco que o
 próprio teste põe e tira.
 
@@ -157,11 +157,13 @@ resultado delas é um relatório para ler, não uma asserção que passa ou falh
 ```bash
 scripts/bench.sh              # RNF03 no simulador
 scripts/bench.sh --board      # o mesmo binário, para rodar na placa
+python3 scripts/stack_report.py --check console.log   # pilha por thread, do console da placa
 ```
 
 | Bancada | Pergunta | Resultado |
 |---|---|---|
 | [`bench/rnf03/`](bench/rnf03/) | Quanto custa abrir e ler uma faixa do cartão? | [medição](docs/medicoes/rnf03-abertura-de-faixa.md) · [ADR 0006](docs/adr/0006-sem-pre-carga-de-faixas-vizinhas.md) |
+| o próprio firmware, com `CONFIG_THREAD_ANALYZER` | Quanto de pilha cada thread usa, e a folga se justifica? | [roteiro e regra de folga](docs/medicoes/pilhas-por-thread.md) — medição na placa pendente |
 
 A do RNF03 vale como exemplo do que o simulador pode e não pode responder. Ela
 **mede** quantos setores o FatFs pede — software puro acima do `disk_access`,

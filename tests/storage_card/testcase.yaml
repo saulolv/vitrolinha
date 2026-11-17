@@ -1,0 +1,10 @@
+tests:
+  vitrolinha.storage_card:
+    tags:
+      - vitrolinha
+      - storage
+      - card
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim

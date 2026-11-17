@@ -96,6 +96,65 @@ ZTEST(track, test_name_copy_origem_sem_terminador)
 }
 
 /* -------------------------------------------------------------------------
+ * track_name_copy: truncagem em UTF-8
+ * ------------------------------------------------------------------------- */
+
+ZTEST(track, test_name_copy_nao_parte_acento)
+{
+	/* "Ação": o corte em 2 bytes cairia entre o 0xC3 e o 0xA7 do "ç".
+	 * Um 0xC3 solto no fim do nome a tela desenharia como lixo.
+	 */
+	static const char acao[] = "A\xC3\xA7\xC3\xA3o";
+	char dst[3];
+
+	zassert_equal(1U, track_name_copy(dst, sizeof(dst), acao, sizeof(acao) - 1U));
+	zassert_str_equal("A", dst);
+}
+
+ZTEST(track, test_name_copy_corte_na_fronteira_fica_onde_esta)
+{
+	/* O corte já cai antes do líder do "é": nada a recuar. */
+	static const char cafe[] = "a\xC3\xA9";
+	char dst[2];
+
+	zassert_equal(1U, track_name_copy(dst, sizeof(dst), cafe, sizeof(cafe) - 1U));
+	zassert_str_equal("a", dst);
+}
+
+ZTEST(track, test_name_copy_nao_parte_sequencia_de_quatro_bytes)
+{
+	/* A nota musical U+1F3B5 ocupa quatro bytes: cortar depois do
+	 * segundo obriga a recuar dois.
+	 */
+	static const char nota[] = "x\xF0\x9F\x8E\xB5";
+	char dst[4];
+
+	zassert_equal(1U, track_name_copy(dst, sizeof(dst), nota, sizeof(nota) - 1U));
+	zassert_str_equal("x", dst);
+}
+
+ZTEST(track, test_name_copy_recuo_tem_limite)
+{
+	/* Continuações sem líder não são UTF-8, são lixo. O recuo para em
+	 * três bytes, o máximo de um caractere de verdade, em vez de apagar o
+	 * nome inteiro procurando um começo que não existe.
+	 */
+	static const char lixo[] = "\x80\x80\x80\x80\x80";
+	char dst[5];
+
+	zassert_equal(1U, track_name_copy(dst, sizeof(dst), lixo, sizeof(lixo) - 1U));
+}
+
+ZTEST(track, test_name_copy_recuo_para_no_inicio)
+{
+	static const char lixo[] = "\x80\x80";
+	char dst[2];
+
+	zassert_equal(0U, track_name_copy(dst, sizeof(dst), lixo, sizeof(lixo) - 1U));
+	zassert_str_equal("", dst);
+}
+
+/* -------------------------------------------------------------------------
  * track_meta_init
  * ------------------------------------------------------------------------- */
 
@@ -137,6 +196,20 @@ ZTEST(track, test_meta_init_trunca_nome_longo)
 	zassert_equal(TRACK_NAME_MAX - 1U, strlen(meta.name));
 	zassert_equal('\0', meta.name[TRACK_NAME_MAX - 1U],
 		      "o ultimo byte tem de continuar sendo o terminador");
+}
+
+ZTEST(track, test_meta_init_nao_parte_acento_no_fim_do_campo)
+{
+	struct track_meta meta;
+	/* 22 bytes ASCII e um "é" de dois: o campo comporta 23, e o corte
+	 * cairia no meio do acento.
+	 */
+	static const char nome[] = "Cancao de ninar do Ze \xC3\xA9";
+
+	track_meta_init(&meta, 0U, nome, sizeof(nome) - 1U, true);
+
+	zassert_equal(22U, strlen(meta.name));
+	zassert_str_equal("Cancao de ninar do Ze ", meta.name);
 }
 
 ZTEST(track, test_meta_init_zera_residuo)
