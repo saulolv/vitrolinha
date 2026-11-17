@@ -3,7 +3,8 @@
  * @brief Transporte por comandos e aplicação de eventos em prazos absolutos.
  *
  * O lock serializa a thread e o timer. Nenhum deles lê arquivos ou interpreta
- * CSV; durante a carga a thread consulta o resultado a cada milissegundo.
+ * CSV. A thread só acorda por evento: comando na fila ou, durante a carga,
+ * resultado pronto no loader.
  */
 #include <vitrolinha/player.h>
 #include <vitrolinha/cmd.h>
@@ -204,9 +205,18 @@ static void player_worker(void *a, void *b, void *c)
 	ARG_UNUSED(a);
 	ARG_UNUSED(b);
 	ARG_UNUSED(c);
+	struct k_poll_event events[2];
+
+	cmd_poll_event_init(&events[0]);
+	loader_poll_event_init(&events[1]);
 	for (;;) {
 		struct cmd command;
-		int err = cmd_get(&command, loading ? K_MSEC(1) : K_FOREVER);
+
+		events[0].state = K_POLL_STATE_NOT_READY;
+		events[1].state = K_POLL_STATE_NOT_READY;
+		/* O resultado do loader só interessa, e só acorda, durante a carga. */
+		(void)k_poll(events, loading ? 2 : 1, K_FOREVER);
+		int err = cmd_get(&command, K_NO_WAIT);
 		k_spinlock_key_t key = k_spin_lock(&lock);
 
 		if (err == 0) {

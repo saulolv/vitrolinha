@@ -36,12 +36,19 @@ target_sources(app PRIVATE
 # a fila de 32 eventos — perto de 9 KB de RAM que, na placa, ficariam
 # reservados para uma thread que nunca parte. O parser_csv fica na lista
 # comum porque não tem estado estático: sem chamador, não custa RAM.
+#
+# Os dois exigem ainda `CONFIG_POLL`: o player espera comando e resultado de
+# carga num mesmo `k_poll`. O alvo de simulação e tests/playback/ a ligam; os
+# demais testes não usam o player e ficam sem ele. A omissão não é
+# silenciosa — quem chamar `player_init()` sem a opção não linka.
 if(CONFIG_BOARD_NATIVE_SIM AND CONFIG_EXTERNAL_LIBC)
   target_sources(app PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/player.c
-    ${CMAKE_CURRENT_LIST_DIR}/loader.c
     ${CMAKE_CURRENT_LIST_DIR}/tone_trace.c
     ${CMAKE_CURRENT_LIST_DIR}/playback_trace.c
+  )
+  target_sources_ifdef(CONFIG_POLL app PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/player.c
+    ${CMAKE_CURRENT_LIST_DIR}/loader.c
   )
 endif()
 

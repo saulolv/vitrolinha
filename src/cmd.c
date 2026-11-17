@@ -76,6 +76,14 @@ int cmd_get(struct cmd *out, k_timeout_t timeout)
 	return k_msgq_get(&cmd_queue, out, timeout);
 }
 
+#ifdef CONFIG_POLL
+void cmd_poll_event_init(struct k_poll_event *event)
+{
+	k_poll_event_init(event, K_POLL_TYPE_MSGQ_DATA_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY,
+			  &cmd_queue);
+}
+#endif
+
 void cmd_flush(void)
 {
 	k_msgq_purge(&cmd_queue);

@@ -14,6 +14,10 @@
  * A fila tem 32 eventos. O worker repõe eventos da RAM à medida que o
  * player os consome. Pedidos usam um único slot substituível, sem espera.
  *
+ * O player não precisa consultar o resultado em laço: o evento de
+ * loader_poll_event_init() fica pronto quando o resultado de uma
+ * solicitação fica disponível, e loader_get_result() o rearma.
+ *
  * @note Por ora o loader só entende o formato CSV (`parser_csv`). Com o
  *       `storage_fake` ou com o cartão, cujas faixas são RTTTL, toda carga
  *       falharia na validação. Quando o parser RTTTL entrar, o loader terá
@@ -31,6 +35,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+struct k_poll_event;
 
 /** @brief Resultado da preparação de uma faixa, consultado pelo player. */
 struct loader_result {
@@ -71,8 +77,19 @@ int loader_request(int track, uint32_t *request_id);
  *         para solicitação substituída/cancelada ou -EINVAL para argumento inválido.
  * @note Não bloqueia. Resultado pronto permanece consultável até cancelamento
  *       ou substituição; somente então o player poderá iniciar o timer.
+ *       Rearma o evento de loader_poll_event_init(): depois de -EAGAIN, o
+ *       evento volta a ficar pronto quando o resultado chegar.
  */
 int loader_get_result(uint32_t request_id, struct loader_result *out);
+
+/**
+ * @brief Prepara um evento de `k_poll` que fica pronto com um resultado novo.
+ * @param event Evento a preparar. Não pode ser nulo.
+ * @note O evento acorda; quem decide é loader_get_result(). Ele pode ficar
+ *       pronto por uma solicitação já substituída, e a consulta devolve
+ *       -EAGAIN ou -ESTALE nesse caso. Exige `CONFIG_POLL`.
+ */
+void loader_poll_event_init(struct k_poll_event *event);
 
 /**
  * @brief Retira um evento já preparado da fila, sem E/S nem parsing.

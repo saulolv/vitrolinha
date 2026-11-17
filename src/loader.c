@@ -32,6 +32,8 @@
 
 K_MSGQ_DEFINE(events, sizeof(struct playback_event), 32, 4);
 K_SEM_DEFINE(work, 0, 1);
+/** @brief Levantado quando o resultado da geração corrente fica pronto. */
+static struct k_poll_signal ready_signal = K_POLL_SIGNAL_INITIALIZER(ready_signal);
 static struct k_spinlock lock;
 static uint8_t buffer[STORAGE_FILE_MAX];
 static struct parser_csv parser;
@@ -54,6 +56,15 @@ static uint32_t new_generation(void)
 	finished = false;
 	k_msgq_purge(&events);
 	return active_id;
+}
+
+/** @brief Publica o resultado e acorda o player; chamado com lock adquirido. */
+static void mark_ready(void)
+{
+	if (!ready) {
+		ready = true;
+		k_poll_signal_raise(&ready_signal, 0);
+	}
 }
 
 static void loader_worker(void *a, void *b, void *c)
@@ -96,7 +107,9 @@ static void loader_worker(void *a, void *b, void *c)
 				.track = track, .status = status, .error_line = error.line,
 				.total_us = status == 0 ? parser.total_us : 0,
 			};
-			ready = status != 0;
+			if (status != 0) {
+				mark_ready();
+			}
 			k_spin_unlock(&lock, key);
 			if (status != 0) {
 				continue;
@@ -110,7 +123,7 @@ static void loader_worker(void *a, void *b, void *c)
 				break;
 			}
 			if (finished || k_msgq_num_free_get(&events) == 0) {
-				ready = true;
+				mark_ready();
 				k_spin_unlock(&lock, key);
 				break;
 			}
@@ -129,7 +142,7 @@ static void loader_worker(void *a, void *b, void *c)
 				finished = parser.final_event_emitted;
 			} else {
 				result.status = status < 0 ? status : -EIO;
-				ready = true;
+				mark_ready();
 			}
 			k_spin_unlock(&lock, key);
 		}
@@ -166,6 +179,11 @@ int loader_get_result(uint32_t request_id, struct loader_result *out)
 		return -EINVAL;
 	}
 	k_spinlock_key_t key = k_spin_lock(&lock);
+
+	/* Sob o mesmo lock de mark_ready: ou o resultado já está pronto, ou o
+	 * sinal levantado depois deste reset acorda o player de novo.
+	 */
+	k_poll_signal_reset(&ready_signal);
 	int err = request_id != active_id ? -ESTALE : (!ready ? -EAGAIN : 0);
 
 	if (err == 0) {
@@ -173,6 +191,11 @@ int loader_get_result(uint32_t request_id, struct loader_result *out)
 	}
 	k_spin_unlock(&lock, key);
 	return err;
+}
+
+void loader_poll_event_init(struct k_poll_event *event)
+{
+	k_poll_event_init(event, K_POLL_TYPE_SIGNAL, K_POLL_MODE_NOTIFY_ONLY, &ready_signal);
 }
 
 int loader_next_event(uint32_t request_id, struct playback_event *out)
