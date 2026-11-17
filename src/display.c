@@ -520,7 +520,7 @@ static void app(void) {
     static lv_style_t style_container;
 
     /* Buffer estático utilizado para armazenar os nomes das faixas. */
-    static char names[1000];
+    static char names[BUFFER_SIZE];
 
     static bool inited = false;
 
