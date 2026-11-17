@@ -13,6 +13,11 @@
  *
  * A fila tem 32 eventos. O worker repõe eventos da RAM à medida que o
  * player os consome. Pedidos usam um único slot substituível, sem espera.
+ *
+ * @note Por ora o loader só entende o formato CSV (`parser_csv`). Com o
+ *       `storage_fake` ou com o cartão, cujas faixas são RTTTL, toda carga
+ *       falharia na validação. Quando o parser RTTTL entrar, o loader terá
+ *       de escolher o parser pelo formato do arquivo.
  */
 
 #ifndef VITROLINHA_LOADER_H_
