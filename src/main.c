@@ -31,7 +31,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-#define CONFIG_BOARD_ZBOOK
+/* #define CONFIG_BOARD_ZBOOK */
 
 LOG_MODULE_REGISTER(vitrolinha, LOG_LEVEL_INF);
 
@@ -131,8 +131,7 @@ static int library_report(void) {
     static uint8_t buf[STORAGE_FILE_MAX];
     int count;
 
-    LOG_INF("Faixas: %s",
-		storage_present() ? "disponiveis" : "indisponiveis");
+    LOG_INF("Faixas: %s", storage_present() ? "disponiveis" : "indisponiveis");
 
     count = storage_scan(library, ARRAY_SIZE(library));
     if (count < 0) {

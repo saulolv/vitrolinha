@@ -1,3 +1,4 @@
+#include "misc/lv_color.h"
 #include "stdlib/lv_string.h"
 
 #include "vitrolinha/display.h"
@@ -81,7 +82,7 @@ typedef struct {
 } cb_data;
 
 /** Indica se um evento de clique foi recebido. */
-static bool clicked = false;
+/* static bool clicked = false; */
 
 /** Timer responsável pela animação da barra de progresso. */
 static lv_timer_t *bar_timer;
@@ -325,39 +326,35 @@ static void event_cb(lv_event_t *e) {
 
     LOG_INF("Key entered: %d", lv_indev_get_key(indev));
 
-    if (clicked) {
-        clicked = false;
+    /* Obtém o texto da opção atualmente selecionada. */
+    lv_roller_get_selected_str(roller, buf, sizeof(buf));
 
-        /* Obtém o texto da opção atualmente selecionada. */
-        lv_roller_get_selected_str(roller, buf, sizeof(buf));
+    LOG_INF("Buffer: %s\n", buf);
 
-        LOG_INF("Buffer: %s\n", buf);
+    /* Atualiza o rótulo com o nome da nova seleção. */
+    lv_label_set_text_fmt(music_label, "%s", buf);
 
-        /* Atualiza o rótulo com o nome da nova seleção. */
-        lv_label_set_text_fmt(music_label, "%s", buf);
+    LOG_INF("Buffer after: %s\n", playing_music);
 
-        LOG_INF("Buffer after: %s\n", playing_music);
+    /*
+     * Cria o timer na primeira seleção.
+     * O retorno evita executar as operações seguintes nessa chamada.
+     */
+    if (!bar_timer) {
+        bar_timer = lv_timer_create(bar_timer_cb, 500, bar);
+        return;
+    }
 
-        /*
-         * Cria o timer na primeira seleção.
-         * O retorno evita executar as operações seguintes nessa chamada.
-         */
-        if (!bar_timer) {
-            bar_timer = lv_timer_create(bar_timer_cb, 500, bar);
-            return;
-        }
+    /* Reinicia o progresso quando a seleção é alterada. */
+    if (lv_strcmp(playing_music, buf)) {
+        reset_bar_timer(bar);
+    }
 
-        /* Reinicia o progresso quando a seleção é alterada. */
-        if (lv_strcmp(playing_music, buf)) {
-            reset_bar_timer(bar);
-        }
-
-        /* Alterna o estado de execução do timer. */
-        if (lv_timer_get_paused(bar_timer)) {
-            lv_timer_resume(bar_timer);
-        } else {
-            lv_timer_pause(bar_timer);
-        }
+    /* Alterna o estado de execução do timer. */
+    if (lv_timer_get_paused(bar_timer)) {
+        lv_timer_resume(bar_timer);
+    } else {
+        lv_timer_pause(bar_timer);
     }
 }
 
@@ -477,6 +474,7 @@ static void screen_init(void) {
  *
  * @param e Evento de clique recebido do LVGL.
  */
+#if defined(CONFIG_BOARD_ZBOOK)
 static void clicked_cb(lv_event_t *e) {
     lv_obj_t *obj = lv_event_get_target_obj(e);
     lv_group_t *g = lv_obj_get_group(obj);
@@ -484,9 +482,8 @@ static void clicked_cb(lv_event_t *e) {
     if (g != NULL) {
         lv_group_set_editing(g, true);
     }
-
-    clicked = true;
 }
+#endif
 
 /* -------------------------------------------------------------------------- */
 /* Aplicação principal                                                        */
@@ -537,10 +534,11 @@ static void app(void) {
         /* Estilo principal do roller. */
         lv_style_init(&style_roller_main);
         lv_style_set_bg_color(&style_roller_main, lv_color_hex(0xffffff));
-        lv_style_set_radius(&style_roller_main, 12);
-        lv_style_set_border_opa(&style_roller_main, 0);
+        /* lv_style_set_radius(&style_roller_main, 2); */
+        lv_style_set_border_opa(&style_roller_main, LV_OPA_0);
         lv_style_set_text_color(&style_roller_main, lv_color_hex(0x000000));
         lv_style_set_text_line_space(&style_roller_main, 2);
+        lv_style_set_outline_opa(&style_roller_main, LV_OPA_100);
 
         /* Estilo da opção selecionada. */
         lv_style_init(&style_roller_selected);
@@ -553,7 +551,7 @@ static void app(void) {
 
         /* Estilo do container. */
         lv_style_init(&style_container);
-        lv_style_set_border_opa(&style_container, 0);
+        lv_style_set_border_opa(&style_container, LV_OPA_0);
 
         inited = true;
     }
@@ -575,7 +573,9 @@ static void app(void) {
     /* Define a terceira opção como seleção inicial. */
     lv_roller_set_selected(roller, 2, false);
 
-    lv_obj_add_style(roller, &style_roller_main, LV_PART_MAIN);
+    lv_obj_add_style(roller, &style_roller_main,
+                     LV_PART_MAIN | LV_STATE_FOCUSED | LV_STATE_FOCUS_KEY |
+                         LV_STATE_EDITED);
     lv_obj_add_style(roller, &style_roller_selected, LV_PART_SELECTED);
 
     /* ---------------------------------------------------------------------- */
@@ -607,7 +607,9 @@ static void app(void) {
     lv_group_add_obj(group, roller);
     lv_group_focus_obj(roller);
 
+#if defined(CONFIG_BOARD_ZBOOK)
     lv_group_set_editing(group, true);
+#endif
 
     /* ---------------------------------------------------------------------- */
     /* Barra de progresso                                                     */
@@ -635,7 +637,11 @@ static void app(void) {
     global_data.label = music_label;
     global_data.bar = bar;
 
-    lv_obj_add_event_cb(roller, event_cb, LV_EVENT_KEY, &global_data);
+    /* lv_obj_add_event_cb(roller, event_cb, LV_EVENT_KEY, &global_data); */
+    lv_obj_add_event_cb(roller, event_cb, LV_EVENT_VALUE_CHANGED, &global_data);
 
+#if defined(CONFIG_BOARD_ZBOOK)
+    /* Essencial para manter o foco no roller após clicks */
     lv_obj_add_event_cb(roller, clicked_cb, LV_EVENT_CLICKED, NULL);
+#endif
 }
