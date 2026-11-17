@@ -241,6 +241,17 @@ ZTEST(storage, test_carga_nao_escreve_ao_rejeitar)
 	}
 }
 
+ZTEST(storage, test_buffer_maior_que_o_teto_carrega_igual)
+{
+	static uint8_t roomy[2U * STORAGE_FILE_MAX];
+
+	/* A capacidade acima do teto é tratada como o teto. As faixas
+	 * embutidas cabem nele, então a carga sai como sairia com o buffer de
+	 * faixa — o caso da recusa é exercitado na implementação do cartão.
+	 */
+	zassert_true(storage_load(0, roomy, sizeof(roomy)) > 0);
+}
+
 ZTEST(storage, test_carga_sem_cartao)
 {
 	uint8_t buf[STORAGE_FILE_MAX];
@@ -257,4 +268,50 @@ ZTEST(storage, test_carga_com_cartao_mudo)
 	storage_fake_set_failing(true);
 
 	zassert_equal(-EIO, storage_load(0, buf, sizeof(buf)));
+}
+
+/* -------------------------------------------------------------------------
+ * Mensagens de erro
+ * ------------------------------------------------------------------------- */
+
+ZTEST(storage, test_mensagens_cabem_numa_linha_da_tela)
+{
+	static const int codes[] = {-ENODEV, -EIO, -EFBIG, -ENOENT, -EINVAL, 0, -ENOTSUP};
+
+	/* 16 colunas com a UNSCII-8: uma mensagem maior quebraria a linha ou
+	 * seria cortada pelo rótulo.
+	 */
+	for (size_t i = 0U; i < ARRAY_SIZE(codes); i++) {
+		const char *text = storage_error_text(codes[i]);
+
+		zassert_not_null(text, "codigo %d sem mensagem", codes[i]);
+		zassert_true(strlen(text) <= 16U, "\"%s\" nao cabe na tela", text);
+	}
+}
+
+ZTEST(storage, test_cada_erro_do_contrato_tem_mensagem_propria)
+{
+	static const int codes[] = {-ENODEV, -EIO, -EFBIG, -ENOENT, -EINVAL};
+	const char *generic = storage_error_text(-ENOTSUP);
+
+	/* "Sem cartao" e "Erro de leitura" pedem gestos diferentes de quem
+	 * olha a tela; uma mensagem só para os dois esconderia isso.
+	 */
+	for (size_t i = 0U; i < ARRAY_SIZE(codes); i++) {
+		zassert_true(strcmp(generic, storage_error_text(codes[i])) != 0,
+			     "codigo %d caiu na mensagem generica", codes[i]);
+
+		for (size_t j = i + 1U; j < ARRAY_SIZE(codes); j++) {
+			zassert_true(strcmp(storage_error_text(codes[i]),
+					    storage_error_text(codes[j])) != 0,
+				     "codigos %d e %d com a mesma mensagem", codes[i], codes[j]);
+		}
+	}
+}
+
+ZTEST(storage, test_carga_recusada_tem_mensagem)
+{
+	uint8_t buf[8];
+
+	zassert_str_equal("Maior que 4 KB", storage_error_text(storage_load(0, buf, sizeof(buf))));
 }

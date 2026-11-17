@@ -88,7 +88,7 @@ todo dia. A biblioteca do simulador vem da implementação de mentira, com duas
 faixas embutidas no binário: o `CONFIG_VITROLINHA_STORAGE` (em
 `Kconfig.vitrolinha`) escolhe o cartão na placa e a mentira no simulador.
 Inserção, remoção e volume ilegível são exercitados em
-[`tests/card/`](tests/card/), e a varredura de verdade em
+[`tests/card/`](tests/card/), e a varredura e a carga de verdade em
 [`tests/storage_card/`](tests/storage_card/), os dois sobre um disco que o
 próprio teste põe e tira.
 

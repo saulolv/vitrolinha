@@ -103,6 +103,18 @@ void fake_disk_fail_deinit(bool failing);
 void fake_disk_eject_after(unsigned int accesses);
 
 /**
+ * @brief Quantas leituras de setor o disco atendeu desde o preparo.
+ *
+ * Conta chamadas de leitura, bem-sucedidas ou não, e nunca é zerada — quem
+ * quer saber se um trecho tocou no cartão compara duas leituras deste
+ * contador. É o que transforma "a reprodução não lê o cartão" de promessa em
+ * asserção.
+ *
+ * @return Chamadas de leitura recebidas.
+ */
+unsigned int fake_disk_reads(void);
+
+/**
  * @brief Devolve o disco ao `disk_access`, esvazia o soquete e tira as falhas.
  *
  * Não desfaz a formatação: o volume continua válido.

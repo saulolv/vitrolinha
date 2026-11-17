@@ -23,6 +23,7 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/cmd.c
   ${CMAKE_CURRENT_LIST_DIR}/seqlock.c
   ${CMAKE_CURRENT_LIST_DIR}/snapshot.c
+  ${CMAKE_CURRENT_LIST_DIR}/storage_error.c
   ${CMAKE_CURRENT_LIST_DIR}/track.c
 )
 

@@ -144,6 +144,13 @@ int storage_load(int track, uint8_t *buf, size_t len)
 		return -EINVAL;
 	}
 
+	/* O mesmo teto do cartão, para que as duas implementações não
+	 * divirjam sobre o que cabe.
+	 */
+	if (len > STORAGE_FILE_MAX) {
+		len = STORAGE_FILE_MAX;
+	}
+
 	status = fake_card_status();
 	if (status != 0) {
 		return status;

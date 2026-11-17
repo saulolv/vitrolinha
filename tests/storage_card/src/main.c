@@ -10,6 +10,12 @@
  *
  * Os nomes de arquivo são 8.3 porque o firmware roda sem nomes longos: é
  * exatamente por isso que o nome da faixa vem do cabeçalho.
+ *
+ * O critério da issue #11 é "o arquivo carrega, o oversize é rejeitado com
+ * mensagem, e a reprodução não emite nenhuma chamada de sistema de arquivos".
+ * O último vira asserção pelo contador de leituras do disco: depois da carga,
+ * o cartão sai do soquete, a faixa é percorrida do byte zero, e o disco não
+ * vê leitura nenhuma.
  */
 
 #include "fake_disk.h"
@@ -36,8 +42,28 @@
 /** @brief Um cabeçalho RTTTL mínimo e válido, depois do nome. */
 #define BODY ":d=4,o=5,b=125:c,d,e"
 
+/**
+ * @brief Uma melodia de verdade, do tamanho típico do que vai no cartão.
+ *
+ * Com o fim de linha que um editor de texto deixa: a carga entrega o arquivo
+ * como está, e quem decide o que é RTTTL é o interpretador.
+ */
+#define FUR_ELISE                                                                          \
+	"Fur Elise:d=8,o=5,b=125:"                                                         \
+	"e6,d#6,e6,d#6,e6,b,d6,c6,a,p,c,e,a,b,p,e,g#,b,c6,"                                \
+	"p,e,e6,d#6,e6,d#6,e6,b,d6,c6,a,p,c,e,a,b,p,e,c6,b,a\r\n"
+
+/** @brief Byte que marca o buffer, para ver se a carga recusada o tocou. */
+#define UNTOUCHED 0xAAU
+
 /** @brief Conteúdo grande, para os casos de tamanho. Estático: não cabe na pilha. */
 static char big[STORAGE_FILE_MAX + 1U];
+
+/**
+ * @brief Destino da carga: estático e do tamanho do buffer de faixa, como na
+ *        aplicação.
+ */
+static uint8_t track_buf[STORAGE_FILE_MAX];
 
 /**
  * @brief Monta o caminho de um arquivo na raiz do cartão.
@@ -542,7 +568,262 @@ ZTEST(storage_card, test_presenca_acompanha_o_cartao)
 }
 
 /* -------------------------------------------------------------------------
- * Carga — por enquanto só os índices (issue #11)
+ * Carga: o arquivo inteiro, de uma vez
+ * ------------------------------------------------------------------------- */
+
+/**
+ * @brief Preenche @p buf com um padrão que muda a cada setor.
+ *
+ * Um aglomerado lido fora de ordem, ou duas vezes, produz bytes diferentes
+ * do esperado — o que um preenchimento constante esconderia.
+ */
+static void fill_pattern(char *buf, size_t len, uint8_t seed)
+{
+	for (size_t i = 0U; i < len; i++) {
+		buf[i] = (char)(uint8_t)(i ^ (i >> 8) ^ seed);
+	}
+}
+
+/** @brief Marca o buffer de carga inteiro com ::UNTOUCHED. */
+static void mark_track_buf(void)
+{
+	(void)memset(track_buf, UNTOUCHED, sizeof(track_buf));
+}
+
+/** @brief Confere que nenhum byte do buffer de carga foi escrito. */
+static void assert_track_buf_untouched(void)
+{
+	for (size_t i = 0U; i < sizeof(track_buf); i++) {
+		zassert_equal(UNTOUCHED, track_buf[i], "byte %zu escrito numa carga recusada", i);
+	}
+}
+
+/** @brief Varre e confere que a biblioteca tem @p count faixas. */
+static void scan_expecting(int count)
+{
+	struct track_meta library[LIBRARY_MAX];
+
+	zassert_equal(count, storage_scan(library, ARRAY_SIZE(library), NULL));
+}
+
+ZTEST(storage_card, test_carga_traz_o_arquivo_inteiro)
+{
+	put_text("FURELIS.TXT", FUR_ELISE);
+	scan_expecting(1);
+
+	zassert_equal((int)strlen(FUR_ELISE), storage_load(0, track_buf, sizeof(track_buf)));
+	zassert_mem_equal(FUR_ELISE, track_buf, strlen(FUR_ELISE));
+}
+
+ZTEST(storage_card, test_carga_segue_o_indice_da_varredura)
+{
+	put_text("C.TXT", "Charlie" BODY);
+	put_text("A.TXT", "Alfa" BODY);
+	put_text("B.TXT", "Bravo" BODY);
+	scan_expecting(3);
+
+	/* O índice 1 é o segundo arquivo do diretório, não o segundo em ordem
+	 * alfabética: é o que a lista mostrou na posição 1.
+	 */
+	zassert_equal((int)strlen("Alfa" BODY), storage_load(1, track_buf, sizeof(track_buf)));
+	zassert_mem_equal("Alfa" BODY, track_buf, strlen("Alfa" BODY));
+}
+
+ZTEST(storage_card, test_carga_do_tamanho_do_buffer)
+{
+	fill_pattern(big, STORAGE_FILE_MAX, 0x5AU);
+	put_file("CHEIO.TXT", big, STORAGE_FILE_MAX);
+	scan_expecting(1);
+
+	/* O teto é inclusivo, e o arquivo cheio ocupa oito aglomerados neste
+	 * volume: a carga atravessa a cadeia da FAT, não um setor só.
+	 */
+	zassert_equal((int)STORAGE_FILE_MAX, storage_load(0, track_buf, sizeof(track_buf)));
+	zassert_mem_equal(big, track_buf, STORAGE_FILE_MAX);
+}
+
+ZTEST(storage_card, test_carga_de_arquivo_fragmentado)
+{
+	/* Um aglomerado de cada vez, alternando: é como fica um cartão em que
+	 * arquivos foram copiados e apagados ao longo do tempo.
+	 */
+	static char other[STORAGE_FILE_MAX];
+	struct fs_statvfs stat;
+	struct fs_file_t a;
+	struct fs_file_t b;
+	size_t chunk;
+
+	zassert_ok(fs_statvfs(CARD_MOUNT_POINT, &stat));
+	chunk = stat.f_frsize;
+	zassert_true(chunk < STORAGE_FILE_MAX,
+		     "aglomerado de %zu B: o arquivo nao teria como fragmentar", chunk);
+
+	fill_pattern(big, STORAGE_FILE_MAX, 0x11U);
+	fill_pattern(other, sizeof(other), 0xEEU);
+
+	fs_file_t_init(&a);
+	fs_file_t_init(&b);
+	zassert_ok(fs_open(&a, CARD_MOUNT_POINT "/FRAG1.TXT", FS_O_CREATE | FS_O_WRITE));
+	zassert_ok(fs_open(&b, CARD_MOUNT_POINT "/FRAG2.TXT", FS_O_CREATE | FS_O_WRITE));
+
+	for (size_t off = 0U; off < STORAGE_FILE_MAX; off += chunk) {
+		zassert_equal((ssize_t)chunk, fs_write(&a, &big[off], chunk));
+		zassert_equal((ssize_t)chunk, fs_write(&b, &other[off], chunk));
+	}
+
+	zassert_ok(fs_close(&a));
+	zassert_ok(fs_close(&b));
+
+	scan_expecting(2);
+
+	zassert_equal((int)STORAGE_FILE_MAX, storage_load(0, track_buf, sizeof(track_buf)));
+	zassert_mem_equal(big, track_buf, STORAGE_FILE_MAX, "o primeiro saiu embaralhado");
+
+	zassert_equal((int)STORAGE_FILE_MAX, storage_load(1, track_buf, sizeof(track_buf)));
+	zassert_mem_equal(other, track_buf, sizeof(other), "o segundo saiu embaralhado");
+}
+
+ZTEST(storage_card, test_carga_de_arquivo_vazio)
+{
+	put_file("NADA.TXT", "", 0U);
+	scan_expecting(1);
+
+	/* Zero bytes não é erro de carga: o arquivo carregou, e é o
+	 * interpretador quem vai recusá-lo. A varredura já o marcou com `!`.
+	 */
+	zassert_equal(0, storage_load(0, track_buf, sizeof(track_buf)));
+}
+
+/* -------------------------------------------------------------------------
+ * Carga: o arquivo grande é recusado, nunca truncado
+ * ------------------------------------------------------------------------- */
+
+ZTEST(storage_card, test_arquivo_maior_que_o_buffer_e_recusado)
+{
+	(void)memset(big, 'c', sizeof(big));
+	(void)memcpy(big, "Grande" BODY, strlen("Grande" BODY));
+	put_file("GRANDE.TXT", big, STORAGE_FILE_MAX + 1U);
+	scan_expecting(1);
+
+	/* Um byte além do teto. Meia melodia sem aviso seria pior que a tela
+	 * de erro, e a tela de erro tem o que dizer.
+	 */
+	mark_track_buf();
+	zassert_equal(-EFBIG, storage_load(0, track_buf, sizeof(track_buf)));
+	assert_track_buf_untouched();
+
+	zassert_str_equal("Maior que 4 KB", storage_error_text(-EFBIG));
+}
+
+ZTEST(storage_card, test_arquivo_maior_que_o_buffer_do_chamador_e_recusado)
+{
+	uint8_t small[16];
+
+	put_text("FURELIS.TXT", FUR_ELISE);
+	scan_expecting(1);
+
+	(void)memset(small, UNTOUCHED, sizeof(small));
+	zassert_equal(-EFBIG, storage_load(0, small, sizeof(small)));
+
+	for (size_t i = 0U; i < sizeof(small); i++) {
+		zassert_equal(UNTOUCHED, small[i], "byte %zu escrito numa carga recusada", i);
+	}
+}
+
+ZTEST(storage_card, test_buffer_maior_nao_levanta_o_teto)
+{
+	static uint8_t roomy[2U * STORAGE_FILE_MAX];
+
+	(void)memset(big, 'c', sizeof(big));
+	(void)memcpy(big, "Grande" BODY, strlen("Grande" BODY));
+	put_file("GRANDE.TXT", big, STORAGE_FILE_MAX + 1U);
+	scan_expecting(1);
+
+	/* A varredura listou a faixa com `!` por passar do teto. Um chamador
+	 * com buffer folgado não pode fazê-la tocar mesmo assim: a lista e a
+	 * carga têm de concordar.
+	 */
+	zassert_equal(-EFBIG, storage_load(0, roomy, sizeof(roomy)));
+}
+
+/* -------------------------------------------------------------------------
+ * Carga: depois dela, o cartão não é mais necessário
+ * ------------------------------------------------------------------------- */
+
+/**
+ * @brief Percorre a faixa em RAM como o interpretador vai percorrer.
+ *
+ * Do byte zero ao último, contando as notas do corpo — o que vem depois do
+ * segundo `:`. Não é o interpretador, que é outra issue; é a prova de que
+ * tudo de que ele vai precisar está no buffer.
+ */
+static size_t count_notes(const uint8_t *buf, size_t len)
+{
+	size_t colons = 0U;
+	size_t notes = 0U;
+
+	for (size_t i = 0U; i < len; i++) {
+		if (buf[i] == ':') {
+			colons++;
+		} else if ((colons == 2U) && (buf[i] == ',')) {
+			notes++;
+		}
+	}
+
+	/* A última nota não tem vírgula depois. */
+	return (colons == 2U) ? notes + 1U : 0U;
+}
+
+ZTEST(storage_card, test_reproducao_nao_toca_no_cartao)
+{
+	unsigned int reads;
+	int size;
+
+	put_text("FURELIS.TXT", FUR_ELISE);
+	scan_expecting(1);
+
+	size = storage_load(0, track_buf, sizeof(track_buf));
+	zassert_equal((int)strlen(FUR_ELISE), size);
+
+	reads = fake_disk_reads();
+
+	/* O cartão sai na primeira nota. A carga já devolveu o volume: se
+	 * tivesse deixado o empréstimo ou um arquivo aberto, o monitor não
+	 * veria o soquete vazio.
+	 */
+	fake_disk_insert(false);
+	zassert_equal(CARD_ABSENT, card_refresh(), "a carga deixou o volume emprestado");
+
+	/* Tocar e, no fim, reiniciar: duas passagens do byte zero, sem o
+	 * cartão.
+	 */
+	zassert_equal(40U, count_notes(track_buf, (size_t)size));
+	zassert_equal(40U, count_notes(track_buf, (size_t)size), "reiniciar mudou a faixa");
+
+	zassert_equal(reads, fake_disk_reads(), "a reproducao leu %u setor(es) do cartao",
+		      fake_disk_reads() - reads);
+	zassert_mem_equal(FUR_ELISE, track_buf, (size_t)size,
+			  "tirar o cartao mexeu na faixa carregada");
+}
+
+ZTEST(storage_card, test_cargas_seguidas_nao_deixam_arquivo_aberto)
+{
+	put_text("FURELIS.TXT", FUR_ELISE);
+	scan_expecting(1);
+
+	/* O FatFs tem CONFIG_FS_FATFS_NUM_FILES objetos de arquivo, alocados
+	 * de antemão. Uma carga que esquecesse o seu aberto esgotaria a
+	 * reserva em poucas trocas de faixa, e "seguinte" pararia de
+	 * funcionar sem motivo aparente.
+	 */
+	for (int i = 0; i < (4 * CONFIG_FS_FATFS_NUM_FILES); i++) {
+		zassert_equal((int)strlen(FUR_ELISE), storage_load(0, track_buf, sizeof(track_buf)),
+			      "a carga %d falhou", i);
+	}
+}
+
+/* -------------------------------------------------------------------------
+ * Carga: erros do contrato
  * ------------------------------------------------------------------------- */
 
 ZTEST(storage_card, test_carga_recusa_argumentos_invalidos)
@@ -555,38 +836,93 @@ ZTEST(storage_card, test_carga_recusa_argumentos_invalidos)
 
 ZTEST(storage_card, test_carga_sem_cartao)
 {
-	uint8_t buf[16];
+	put_text("FURELIS.TXT", FUR_ELISE);
+	scan_expecting(1);
 
 	fake_disk_insert(false);
 	zassert_equal(CARD_ABSENT, card_refresh());
 
-	zassert_equal(-ENODEV, storage_load(0, buf, sizeof(buf)));
+	mark_track_buf();
+	zassert_equal(-ENODEV, storage_load(0, track_buf, sizeof(track_buf)));
+	assert_track_buf_untouched();
+}
+
+ZTEST(storage_card, test_carga_com_volume_ilegivel)
+{
+	fake_disk_insert(false);
+	zassert_equal(CARD_ABSENT, card_refresh());
+	fake_disk_fail_read(true);
+	fake_disk_insert(true);
+	zassert_equal(CARD_UNREADABLE, card_refresh());
+
+	zassert_equal(-EIO, storage_load(0, track_buf, sizeof(track_buf)));
 }
 
 ZTEST(storage_card, test_carga_fora_da_biblioteca)
 {
-	struct track_meta library[LIBRARY_MAX];
-	uint8_t buf[16];
-
 	put_numbered_tracks(2U);
-	zassert_equal(2, storage_scan(library, ARRAY_SIZE(library), NULL));
+	scan_expecting(2);
 
-	zassert_equal(-ENOENT, storage_load(-1, buf, sizeof(buf)));
-	zassert_equal(-ENOENT, storage_load(2, buf, sizeof(buf)));
+	zassert_equal(-ENOENT, storage_load(-1, track_buf, sizeof(track_buf)));
+	zassert_equal(-ENOENT, storage_load(2, track_buf, sizeof(track_buf)));
 }
 
-ZTEST(storage_card, test_carga_ainda_nao_implementada)
+ZTEST(storage_card, test_carga_de_arquivo_que_sumiu)
 {
-	struct track_meta library[LIBRARY_MAX];
-	uint8_t buf[16];
+	put_text("FURELIS.TXT", FUR_ELISE);
+	scan_expecting(1);
 
-	put_numbered_tracks(1U);
-	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-
-	/* A carga integral é a issue #11; até lá, o índice é reconhecido e a
-	 * carga, recusada com um código que ninguém confunde com falha.
+	/* O cartão trocado por outro antes de a biblioteca ser varrida de
+	 * novo: o índice existe, o arquivo não.
 	 */
-	zassert_equal(-ENOTSUP, storage_load(0, buf, sizeof(buf)));
+	zassert_ok(fs_unlink(CARD_MOUNT_POINT "/FURELIS.TXT"));
+
+	zassert_equal(-ENOENT, storage_load(0, track_buf, sizeof(track_buf)));
+}
+
+ZTEST(storage_card, test_carga_com_cartao_que_para_de_ler)
+{
+	put_text("FURELIS.TXT", FUR_ELISE);
+	scan_expecting(1);
+
+	fake_disk_fail_read(true);
+
+	zassert_equal(-EIO, storage_load(0, track_buf, sizeof(track_buf)));
+}
+
+ZTEST(storage_card, test_remocao_em_qualquer_ponto_da_carga)
+{
+	unsigned int accesses;
+	int result = -EIO;
+
+	/* O arquivo cheio, para a carga ter o maior número possível de
+	 * pontos onde ser interrompida.
+	 */
+	fill_pattern(big, STORAGE_FILE_MAX, 0x3CU);
+	put_file("CHEIO.TXT", big, STORAGE_FILE_MAX);
+	scan_expecting(1);
+
+	/* A mesma técnica da varredura interrompida: o cartão sai depois de
+	 * 0, 1, 2... acessos, até a carga passar inteira. Remontar entre uma
+	 * tentativa e outra esvazia o cache do FatFs, então cada tentativa
+	 * começa fria e vai ao disco de novo.
+	 */
+	for (accesses = 0U; accesses < EJECT_SWEEP_MAX; accesses++) {
+		fake_disk_eject_after(accesses);
+		result = storage_load(0, track_buf, sizeof(track_buf));
+
+		if (result >= 0) {
+			break;
+		}
+
+		zassert_equal(-EIO, result, "remocao apos %u acessos deu %d", accesses, result);
+
+		reinsert();
+	}
+
+	zassert_equal((int)STORAGE_FILE_MAX, result, "a carga nunca chegou ao fim");
+	zassert_true(accesses > 0U, "nenhum ponto de remocao foi exercitado");
+	zassert_mem_equal(big, track_buf, STORAGE_FILE_MAX);
 }
 
 ZTEST(storage_card, test_varredura_nova_substitui_a_anterior)
