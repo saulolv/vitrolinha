@@ -93,14 +93,16 @@ int playback_trace_export_csv(const char *path)
 	if (file == NULL) {
 		return -EIO;
 	}
-	int err = fprintf(file, "elapsed_us,frequency_hz\n") < 0 ? -EIO : 0;
-
-	for (size_t i = 0; err == 0 && i < count; i++) {
-		if (fprintf(file, "%" PRIu64 ",%" PRIu32 "\n",
-			    entries[i].elapsed_us, entries[i].freq_hz) < 0) {
-			err = -EIO;
-		}
+	/* O indicador de erro do stream é cumulativo: uma consulta ao fim vale
+	 * por todas as escritas, e o fclose cobre o que ainda estava no buffer.
+	 */
+	(void)fprintf(file, "elapsed_us,frequency_hz\n");
+	for (size_t i = 0; i < count; i++) {
+		(void)fprintf(file, "%" PRIu64 ",%" PRIu32 "\n",
+			      entries[i].elapsed_us, entries[i].freq_hz);
 	}
+	int err = ferror(file) ? -EIO : 0;
+
 	if (fclose(file) != 0) {
 		err = -EIO;
 	}
