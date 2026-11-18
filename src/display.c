@@ -67,10 +67,10 @@ static const struct device *const input_dev = DEVICE_DT_GET(INPUT_NODE);
 /**
  * @brief Tamanho das opções do roller.
  *
- * Cada faixa ocupa no máximo o marcador `!`, o nome (até TRACK_NAME_MAX - 1
- * bytes) e o `\n`, ou seja, TRACK_NAME_MAX + 1. Mais o terminador.
+ * Cada faixa ocupa no máximo o nome (até TRACK_NAME_MAX - 1 bytes) e o
+ * `\n`, ou seja, TRACK_NAME_MAX. Mais o terminador.
  */
-#define ROLLER_OPTIONS_SIZE (LIBRARY_MAX * (TRACK_NAME_MAX + 1U) + 1U)
+#define ROLLER_OPTIONS_SIZE (LIBRARY_MAX * TRACK_NAME_MAX + 1U)
 
 /* -------------------------------------------------------------------------- */
 /* Estado global                                                              */
@@ -229,8 +229,11 @@ static void library_load(void) {
 /**
  * @brief Monta as opções do roller, uma faixa por linha.
  *
- * Faixa que o interpretador rejeitou leva `!` na frente. Biblioteca vazia
- * vira uma única linha explicando o porquê.
+ * Biblioteca vazia vira uma única linha explicando o porquê.
+ *
+ * O marcador `!` da faixa rejeitada ainda não entra: pela especificação ele
+ * vem da carga recusada (o `load_error` do instantâneo), junto com a tela de
+ * erro, e não da varredura.
  *
  * @param out Destino de ::ROLLER_OPTIONS_SIZE bytes.
  */
@@ -255,10 +258,6 @@ static void library_options(char *out) {
 
         if (i > 0U) {
             out[used++] = '\n';
-        }
-
-        if (!library[i].valid) {
-            out[used++] = '!';
         }
 
         memcpy(&out[used], library[i].name, len);
