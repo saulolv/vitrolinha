@@ -47,6 +47,7 @@ if(VITROLINHA_STORAGE_HOST)
     message(FATAL_ERROR "storage_host exige native_sim com CONFIG_EXTERNAL_LIBC")
   endif()
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_host.c)
+endif()
 # Quem responde ao storage.h: o cartão ou a implementação de mentira, com duas
 # faixas embutidas no binário. A escolha é do Kconfig.vitrolinha — cartão na
 # placa, mentira no simulador, que não tem disco.

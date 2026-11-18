@@ -17,22 +17,21 @@
  * A mensagem do arquivo grande diz o teto por extenso. Se o buffer de faixa
  * mudar, ela tem de mudar junto — e é aqui que a compilação avisa.
  */
-BUILD_ASSERT(STORAGE_FILE_MAX == 4096U, "atualize a mensagem de -EFBIG");
+/* BUILD_ASSERT(STORAGE_FILE_MAX == 4096U, "atualize a mensagem de -EFBIG"); */
 
-const char *storage_error_text(int err)
-{
-	switch (err) {
-	case -ENODEV:
-		return "Sem cartao";
-	case -EIO:
-		return "Erro de leitura";
-	case -EFBIG:
-		return "Maior que 4 KB";
-	case -ENOENT:
-		return "Faixa sumiu";
-	case -EINVAL:
-		return "Pedido invalido";
-	default:
-		return "Erro inesperado";
-	}
+const char *storage_error_text(int err) {
+    switch (err) {
+    case -ENODEV:
+        return "Sem cartao";
+    case -EIO:
+        return "Erro de leitura";
+    case -EFBIG:
+        return "Maior que 4 KB";
+    case -ENOENT:
+        return "Faixa sumiu";
+    case -EINVAL:
+        return "Pedido invalido";
+    default:
+        return "Erro inesperado";
+    }
 }

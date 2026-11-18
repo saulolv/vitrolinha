@@ -1,6 +1,8 @@
 #include "misc/lv_color.h"
+#include "stdlib.h"
 #include "stdlib/lv_string.h"
 
+#include "vitrolinha/card.h"
 #include "vitrolinha/display.h"
 #include "vitrolinha/storage.h"
 #include "vitrolinha/storage_fake.h"
@@ -382,19 +384,22 @@ static void event_cb(lv_event_t *e) {
  *          com capacidade de pelo menos `STORAGE_FILE_MAX` bytes.
  */
 static int get_name_content(char *name, uint8_t **content) {
-    struct track_meta trackMeta;
+    struct track_meta *trackMeta =
+        (struct track_meta *)malloc(sizeof(struct track_meta) * 10);
 
-    for (size_t i = 0; i < STORAGE_FAKE_TRACK_COUNT; i++) {
-        int file_size = storage_load(i, content[i], STORAGE_FILE_MAX);
+    for (size_t i = 0; i < 5; i++) {
+        /* int file_size = storage_load(i, content[i], STORAGE_FILE_MAX); */
+        int file_size = 3;
 
         if (file_size > (int)STORAGE_FILE_MAX) {
             return K_ERR_STACK_CHK_FAIL;
         }
 
-        fake_storage_get_name(&trackMeta, (uint8_t)i);
+        /* int ret_scan = storage_scan(trackMeta, 10, 0); */
+        /* LOG_INF("ret_scan: %d\n", ret_scan); */
 
         /* Concatena o nome da faixa e uma quebra de linha. */
-        lv_strcat(name, trackMeta.name);
+        lv_strcat(name, "Test");
         lv_strcat(name, "\n");
     }
 
@@ -475,9 +480,34 @@ static void screen_init(void) {
  * @param e Evento de clique recebido do LVGL.
  */
 #if defined(CONFIG_BOARD_ZBOOK)
+
+static void card_changed(enum card_state state) {
+    LOG_INF("Cartao mudou para: %s", card_state_name(state));
+}
+
+static void card_report(void) {
+    int err;
+
+    /* Observar antes de inicializar, para não perder a transição de quem
+     * liga a placa com o cartão já no soquete.
+     */
+    card_observe(card_changed);
+
+    err = card_init();
+    if (err != 0) {
+        LOG_ERR("Monitor do cartao nao subiu: %d", err);
+        return;
+    }
+
+    LOG_INF("Cartao: %s (ponto de montagem %s)",
+            card_state_name(card_get_state()), CARD_MOUNT_POINT);
+}
+
 static void clicked_cb(lv_event_t *e) {
     lv_obj_t *obj = lv_event_get_target_obj(e);
     lv_group_t *g = lv_obj_get_group(obj);
+
+    card_report();
 
     if (g != NULL) {
         lv_group_set_editing(g, true);

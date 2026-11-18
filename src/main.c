@@ -21,6 +21,7 @@
 #include <vitrolinha/display.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
+#include <vitrolinha/storage_test.h>
 #include <vitrolinha/track.h>
 
 #include <app_version.h>
@@ -126,44 +127,47 @@ static void card_report(void) {
  *
  * @return Quantidade de faixas encontradas, ou erro negativo do contrato.
  */
-static int library_report(void)
-{
-	static struct track_meta library[LIBRARY_MAX];
-	static uint8_t buf[STORAGE_FILE_MAX];
-	size_t skipped;
-	int count;
+/* static int library_report(void) { */
+/*     static struct track_meta library[LIBRARY_MAX]; */
+/*     static uint8_t buf[STORAGE_FILE_MAX]; */
+/*     size_t skipped; */
+/*     int count; */
 
-	LOG_INF("Biblioteca: %s", storage_present() ? "disponivel" : "indisponivel");
+/*     LOG_INF("Biblioteca: %s", */
+/*             storage_present() ? "disponivel" : "indisponivel"); */
 
-	count = storage_scan(library, ARRAY_SIZE(library), &skipped);
-	if (count < 0) {
-		LOG_ERR("Varredura falhou: %d", count);
-		return count;
-	}
+/*     count = storage_scan(library, ARRAY_SIZE(library), &skipped); */
+/*     if (count < 0) { */
+/*         LOG_ERR("Varredura falhou: %d", count); */
+/*         return count; */
+/*     } */
 
-    LOG_INF("Biblioteca: %d faixa(s)", count);
+/*     LOG_INF("Biblioteca: %d faixa(s)", count); */
 
-	/* É este aviso que vira mensagem na tela quando a interface existir. */
-	if (skipped > 0U) {
-		LOG_WRN("Biblioteca cheia: %zu arquivo(s) ignorado(s)", skipped);
-	}
+/*     /\* É este aviso que vira mensagem na tela quando a interface existir.
+ * *\/ */
+/*     if (skipped > 0U) { */
+/*         LOG_WRN("Biblioteca cheia: %zu arquivo(s) ignorado(s)", skipped); */
+/*     } */
 
-	for (int i = 0; i < count; i++) {
-		int size = storage_load(i, buf, sizeof(buf));
+/*     for (int i = 0; i < count; i++) { */
+/*         int size = storage_load(i, buf, sizeof(buf)); */
 
-		/* A mensagem é a mesma que a tela de erro vai mostrar. */
-		if (size < 0) {
-			LOG_WRN("  [%u] %-16s  %s (%d)", library[i].index, library[i].name,
-				storage_error_text(size), size);
-			continue;
-		}
+/*         /\* A mensagem é a mesma que a tela de erro vai mostrar. *\/ */
+/*         if (size < 0) { */
+/*             LOG_WRN("  [%u] %-16s  %s (%d)", library[i].index,
+ * library[i].name, */
+/*                     storage_error_text(size), size); */
+/*             continue; */
+/*         } */
 
-        LOG_INF("  [%u] %-16s  %d bytes%s", library[i].index, library[i].name,
-                size, library[i].valid ? "" : "  (invalida)");
-    }
+/*         LOG_INF("  [%u] %-16s  %d bytes%s", library[i].index,
+ * library[i].name, */
+/*                 size, library[i].valid ? "" : "  (invalida)"); */
+/*     } */
 
-    return count;
-}
+/*     return count; */
+/* } */
 
 /**
  * @brief Exercita o contrato do @ref snapshot.h.
@@ -227,13 +231,18 @@ int main(void) {
         return err;
     }
 
+    (void)storage_init();
+    /* (void)lsdir("/"); */
+
     err = display_init();
     if (err != 0) {
         return err;
     }
 
+    /* int ret_init = storage_init(); */
+
     card_report();
-    (void)library_report();
+    /* (void)library_report(); */
     snapshot_report();
     cmd_report();
 

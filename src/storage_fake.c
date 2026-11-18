@@ -89,18 +89,13 @@ void storage_fake_reset(void) {
     fake_failing = false;
 }
 
-int storage_scan(struct track_meta *out, size_t max, size_t *skipped)
-{
-	int status;
-	size_t count;
+int storage_scan(struct track_meta *out, size_t max) {
+    int status;
+    size_t count;
 
-	if (skipped != NULL) {
-		*skipped = 0U;
-	}
-
-	if ((out == NULL) || (max == 0U)) {
-		return -EINVAL;
-	}
+    if ((out == NULL) || (max == 0U)) {
+        return -EINVAL;
+    }
 
     status = fake_card_status();
     if (status != 0) {
@@ -121,11 +116,7 @@ int storage_scan(struct track_meta *out, size_t max, size_t *skipped)
                         strlen(fake_tracks[i].name), true);
     }
 
-	if (skipped != NULL) {
-		*skipped = STORAGE_FAKE_TRACK_COUNT - count;
-	}
-
-	return (int)count;
+    return (int)count;
 }
 
 void fake_storage_get_name(struct track_meta *meta, uint8_t index) {
@@ -137,17 +128,17 @@ int storage_load(int track, uint8_t *buf, size_t len) {
     int status;
     size_t size;
 
-	/* O mesmo teto do cartão, para que as duas implementações não
-	 * divirjam sobre o que cabe.
-	 */
-	if (len > STORAGE_FILE_MAX) {
-		len = STORAGE_FILE_MAX;
-	}
+    /* O mesmo teto do cartão, para que as duas implementações não
+     * divirjam sobre o que cabe.
+     */
+    if (len > STORAGE_FILE_MAX) {
+        len = STORAGE_FILE_MAX;
+    }
 
-	status = fake_card_status();
-	if (status != 0) {
-		return status;
-	}
+    status = fake_card_status();
+    if (status != 0) {
+        return status;
+    }
 
     status = fake_card_status();
     if (status != 0) {
