@@ -6,7 +6,10 @@
 
 #include <vitrolinha/storage.h>
 
+#include "host_libc_fault.h"
+
 #include <dirent.h>
+#include <limits.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -36,6 +39,7 @@ static void before(void *fixture)
 static void after(void *fixture)
 {
 	ARG_UNUSED(fixture);
+	host_libc_fault_arm(HOST_LIBC_FAULT_NONE);
 	DIR *dir = fdopendir(directory_fd);
 	struct dirent *entry;
 
@@ -111,7 +115,11 @@ ZTEST(storage_host, test_limites_de_biblioteca_e_buffer)
 		snprintf(name, sizeof(name), "c%02d.csv", i);
 		write_file(name, csv, sizeof(csv) - 1U);
 	}
-	zassert_equal(LIBRARY_MAX, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+	size_t skipped = 99U;
+
+	/* a, b e c00..c32: 35 candidatos, 32 lugares. */
+	zassert_equal(LIBRARY_MAX, storage_scan(tracks, ARRAY_SIZE(tracks), &skipped));
+	zassert_equal(3U, skipped);
 	zassert_str_equal("a", tracks[0].name);
 	zassert_str_equal("c29", tracks[LIBRARY_MAX - 1U].name);
 	zassert_equal(STORAGE_FILE_MAX, storage_load(0, buffer, STORAGE_FILE_MAX));
@@ -143,4 +151,135 @@ ZTEST(storage_host, test_pasta_vazia_e_ausente)
 	zassert_equal(-ENODEV, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
 	zassert_false(storage_present());
 	zassert_equal(-ENOENT, storage_load(0, buffer, sizeof(buffer)));
+}
+
+ZTEST(storage_host, test_argumentos_invalidos)
+{
+	uint8_t buffer[sizeof(csv)];
+	size_t skipped = 99U;
+
+	zassert_equal(-EINVAL, storage_scan(NULL, 1, &skipped));
+	zassert_equal(0U, skipped);
+	zassert_equal(-EINVAL, storage_scan(tracks, 0, NULL));
+	zassert_equal(-EINVAL, storage_load(0, NULL, sizeof(buffer)));
+	zassert_equal(-EINVAL, storage_load(0, buffer, 0));
+	zassert_equal(-ENOENT, storage_load(-1, buffer, sizeof(buffer)));
+}
+
+ZTEST(storage_host, test_origem_padrao_relativa_ao_diretorio_de_execucao)
+{
+	static char previous[PATH_MAX];
+
+	zassert_not_null(getcwd(previous, sizeof(previous)));
+	zassert_ok(mkdirat(directory_fd, "fixtures", 0700));
+	zassert_ok(mkdirat(directory_fd, "fixtures/music", 0700));
+	write_file("fixtures/music/padrao.csv", csv, sizeof(csv) - 1U);
+	zassert_ok(unsetenv("VITROLINHA_MUSIC_DIR"));
+	zassert_ok(chdir(directory));
+
+	int found = storage_scan(tracks, ARRAY_SIZE(tracks), NULL);
+
+	zassert_ok(chdir(previous));
+	zassert_equal(1, found);
+	zassert_str_equal("padrao", tracks[0].name);
+	zassert_ok(unlinkat(directory_fd, "fixtures/music/padrao.csv", 0));
+	zassert_ok(unlinkat(directory_fd, "fixtures/music", AT_REMOVEDIR));
+}
+
+ZTEST(storage_host, test_origem_inutilizavel)
+{
+	static char path[PATH_MAX + 8U];
+
+	/* Caminho que não cabe: recusado antes de abrir qualquer coisa, e sem
+	 * pasta guardada a presença volta a consultar a origem configurada.
+	 */
+	memset(path, 'a', sizeof(path) - 1U);
+	path[0] = '/';
+	path[sizeof(path) - 1U] = '\0';
+	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", path, 1));
+	zassert_equal(-EIO, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+	zassert_false(storage_present());
+
+	/* Um arquivo no lugar da pasta é ausência, não falha de E/S. */
+	write_file("arquivo.csv", csv, sizeof(csv) - 1U);
+	snprintf(path, sizeof(path), "%s/arquivo.csv", directory);
+	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", path, 1));
+	zassert_equal(-ENODEV, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+
+	/* Um laço de links é falha de E/S. */
+	zassert_ok(symlinkat("laco", directory_fd, "laco"));
+	snprintf(path, sizeof(path), "%s/laco", directory);
+	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", path, 1));
+	zassert_equal(-EIO, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+}
+
+ZTEST(storage_host, test_falha_ao_varrer_descarta_a_lista)
+{
+	uint8_t buffer[sizeof(csv)];
+
+	write_file("a.csv", csv, sizeof(csv) - 1U);
+	zassert_equal(1, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+
+	host_libc_fault_arm(HOST_LIBC_FAULT_READDIR);
+	zassert_equal(-EIO, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+	zassert_equal(-ENOENT, storage_load(0, buffer, sizeof(buffer)));
+
+	host_libc_fault_arm(HOST_LIBC_FAULT_FSTATAT);
+	zassert_equal(-EIO, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+	zassert_equal(-ENOENT, storage_load(0, buffer, sizeof(buffer)));
+}
+
+ZTEST(storage_host, test_falhas_ao_ler_o_arquivo)
+{
+	uint8_t buffer[sizeof(csv)];
+
+	write_file("a.csv", csv, sizeof(csv) - 1U);
+	zassert_equal(1, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+
+	host_libc_fault_arm(HOST_LIBC_FAULT_FSTAT);
+	zassert_equal(-EIO, storage_load(0, buffer, sizeof(buffer)));
+
+	/* Interrupção por sinal não é falha: a leitura recomeça. */
+	host_libc_fault_arm(HOST_LIBC_FAULT_READ_EINTR);
+	zassert_equal(sizeof(csv) - 1U, storage_load(0, buffer, sizeof(buffer)));
+	zassert_mem_equal(csv, buffer, sizeof(csv) - 1U);
+
+	host_libc_fault_arm(HOST_LIBC_FAULT_READ_EIO);
+	zassert_equal(-EIO, storage_load(0, buffer, sizeof(buffer)));
+
+	/* O arquivo encurtou depois do fstat: carga incompleta é falha. */
+	host_libc_fault_arm(HOST_LIBC_FAULT_READ_EOF);
+	zassert_equal(-EIO, storage_load(0, buffer, sizeof(buffer)));
+
+	/* Trocado por uma pasta depois da varredura. */
+	zassert_ok(unlinkat(directory_fd, "a.csv", 0));
+	zassert_ok(mkdirat(directory_fd, "a.csv", 0700));
+	zassert_equal(-EIO, storage_load(0, buffer, sizeof(buffer)));
+}
+
+ZTEST(storage_host, test_pasta_muda_entre_varredura_e_carga)
+{
+	uint8_t buffer[sizeof(csv)];
+	char path[sizeof(directory) + 16U];
+
+	zassert_ok(mkdirat(directory_fd, "sub", 0700));
+	write_file("sub/a.csv", csv, sizeof(csv) - 1U);
+	snprintf(path, sizeof(path), "%s/sub", directory);
+	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", path, 1));
+	zassert_equal(1, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+
+	/* A pasta sumiu. */
+	zassert_ok(renameat(directory_fd, "sub", directory_fd, "movida"));
+	zassert_equal(-ENODEV, storage_load(0, buffer, sizeof(buffer)));
+
+	/* Um arquivo ocupa o lugar dela. */
+	write_file("sub", csv, sizeof(csv) - 1U);
+	zassert_equal(-ENODEV, storage_load(0, buffer, sizeof(buffer)));
+
+	/* Um laço de links ocupa o lugar dela. */
+	zassert_ok(unlinkat(directory_fd, "sub", 0));
+	zassert_ok(symlinkat("sub", directory_fd, "sub"));
+	zassert_equal(-EIO, storage_load(0, buffer, sizeof(buffer)));
+
+	zassert_ok(unlinkat(directory_fd, "movida/a.csv", 0));
 }

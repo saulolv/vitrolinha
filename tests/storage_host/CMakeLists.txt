@@ -4,4 +4,8 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(vitrolinha_storage_host_test LANGUAGES C)
 
 include(${CMAKE_CURRENT_LIST_DIR}/../vitrolinha_test.cmake)
-target_sources(app PRIVATE src/main.c)
+target_include_directories(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../common)
+target_sources(app PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}/../common/host_libc_fault.c
+  src/main.c
+)
