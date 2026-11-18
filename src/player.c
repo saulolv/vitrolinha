@@ -10,10 +10,16 @@
 #include <vitrolinha/cmd.h>
 #include <vitrolinha/loader.h>
 #include <vitrolinha/snapshot.h>
+#include <vitrolinha/storage.h>
 #include <vitrolinha/tone.h>
 
 #include <errno.h>
 #include <zephyr/kernel.h>
+
+/* Um arquivo de STORAGE_FILE_MAX bytes não tem mais linhas do que bytes, então
+ * a linha do erro cabe no uint16_t do instantâneo sem saturar.
+ */
+BUILD_ASSERT(STORAGE_FILE_MAX <= UINT16_MAX, "error_line do instantâneo é de 16 bits");
 
 /**
  * @brief Pilha da thread `player`.
@@ -97,6 +103,9 @@ static void timer_expired(struct k_timer *expired)
 
 static void select_track(int track)
 {
+	/* Antes do stop_at, para a parada já sair publicada sem o erro antigo. */
+	state.load_error = 0;
+	state.error_line = 0;
 	stop_at(0);
 	int err = loader_request(track, &request_id);
 
@@ -175,7 +184,8 @@ static void handle_command(const struct cmd *command)
 
 static void check_load(void)
 {
-	struct loader_result result;
+	/* Zerado: loader_get_result só preenche quando devolve 0. */
+	struct loader_result result = {0};
 	int err = loader_get_result(request_id, &result);
 
 	if (err == -EAGAIN) {
@@ -187,6 +197,13 @@ static void check_load(void)
 	 */
 	if (err != 0 || result.status != 0 ||
 	    loader_next_event(request_id, &current) != 1) {
+		int failure = err != 0 ? err : result.status;
+
+		/* A terceira condição é defesa e chega aqui com failure zero; uma
+		 * carga que falhou nunca pode ser publicada como erro 0.
+		 */
+		state.load_error = (int16_t)(failure != 0 ? failure : -EIO);
+		state.error_line = (uint16_t)result.error_line;
 		(void)loader_cancel(request_id);
 		request_id = 0;
 		stop_at(0);

@@ -364,10 +364,15 @@ ZTEST(playback, test_player_falhas_e_comandos_fora_de_hora)
 	snap = settle();
 	zassert_equal(PLAYER_STOPPED, snap.state);
 	zassert_equal(3, snap.track);
+	/* O motivo e a linha chegam à tela: duração zero na linha 2. */
+	zassert_equal(-EINVAL, snap.load_error);
+	zassert_equal(2, snap.error_line);
 	zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
 	snap = settle();
 	zassert_equal(PLAYER_STOPPED, snap.state);
 	zassert_equal(3, snap.track);
+	zassert_equal(-EINVAL, snap.load_error);
+	zassert_equal(2, snap.error_line);
 
 	/* Parar durante a carga cancela o pedido: nada chega a tocar. */
 	zassert_ok(playback_trace_begin(clock_us()));
@@ -377,6 +382,9 @@ ZTEST(playback, test_player_falhas_e_comandos_fora_de_hora)
 	snapshot_read(&snap);
 	zassert_equal(PLAYER_STOPPED, snap.state);
 	zassert_equal(0, snap.track);
+	/* Selecionar outra faixa apaga o erro da anterior. */
+	zassert_equal(0, snap.load_error);
+	zassert_equal(0, snap.error_line);
 
 	/* Tocar/pausar durante a carga é ignorado. */
 	zassert_ok(cmd_post(CMD_SELECT, 0));
@@ -393,6 +401,8 @@ ZTEST(playback, test_player_falhas_e_comandos_fora_de_hora)
 	zassert_equal(PLAYER_STOPPED, snap.state);
 	zassert_equal(1, snap.track);
 	zassert_equal(0, snap.base_us);
+	/* Falha da saída não é defeito do arquivo. */
+	zassert_equal(0, snap.load_error);
 
 	/* Saída recusando o silêncio da pausa: para em vez de pausar. */
 	zassert_ok(playback_trace_begin(clock_us()));
@@ -437,8 +447,11 @@ ZTEST(playback, test_player_falhas_e_comandos_fora_de_hora)
 	snap = settle();
 	zassert_equal(PLAYER_STOPPED, snap.state);
 	zassert_equal(2, snap.track);
+	zassert_equal(-ESTALE, snap.load_error);
+	zassert_equal(0, snap.error_line);
 	zassert_ok(cmd_post(CMD_SELECT, 1));
-	(void)await_state(PLAYER_PLAYING, 1);
+	snap = await_state(PLAYER_PLAYING, 1);
+	zassert_equal(0, snap.load_error);
 	zassert_ok(cmd_post(CMD_STOP, TRACK_NONE));
 	(void)await_state(PLAYER_STOPPED, 1);
 	zassert_ok(playback_trace_end(clock_us()));

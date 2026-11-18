@@ -9,11 +9,12 @@
   },
 
   "src/player.c": {
-    "62": "Ramo interno do macro K_TIMEOUT_ABS_TICKS, que faz CLAMP(t, 0, INT64_MAX - 1). O prazo e base_us + offset_us em ticks, sempre positivo e muito abaixo de INT64_MAX, entao os ramos de saturacao do CLAMP nao sao do codigo do player e nunca sao tomados.",
-    "74": "Ramos current.offset_us != total_us e current.freq_hz != 0 com status == 0. loader_next_event so devolve 0 depois de entregar o ultimo evento do parser, que e sempre o silencio em total_us; as duas condicoes sao defesa contra uma fila encerrada antes dele, que o parser validado nao produz (ver src/loader.c, linha 142). A fila que para de entregar antes do fim, por -ESTALE, e coberta pelo ramo seguinte.",
-    "91": "Ramo state != PLAYER_PLAYING no callback do timer. Todo caminho que tira o player de PLAYING para o timer sob o mesmo spinlock do callback, e num nucleo so o spinlock mascara a interrupcao: ou o callback rodou antes, ou o k_timer_stop removeu o prazo e ele nao roda mais. A guarda so teria efeito com mais de um nucleo.",
-    "112": "Saida do switch sem nenhum case. cmd_post recusa tipo desconhecido com -EINVAL, e a fila de comandos e privada de cmd.c, entao o player so recebe os cinco comandos tratados.",
-    "188": "Ramo loader_next_event != 1 depois de um resultado pronto e sem erro. O loader so marca pronto um resultado bem-sucedido quando a fila esta cheia ou ja contem o silencio final, entao ha sempre ao menos um evento. A defesa trata o caso como carga recusada."
+    "68": "Ramo interno do macro K_TIMEOUT_ABS_TICKS, que faz CLAMP(t, 0, INT64_MAX - 1). O prazo e base_us + offset_us em ticks, sempre positivo e muito abaixo de INT64_MAX, entao os ramos de saturacao do CLAMP nao sao do codigo do player e nunca sao tomados.",
+    "80": "Ramos current.offset_us != total_us e current.freq_hz != 0 com status == 0. loader_next_event so devolve 0 depois de entregar o ultimo evento do parser, que e sempre o silencio em total_us; as duas condicoes sao defesa contra uma fila encerrada antes dele, que o parser validado nao produz (ver src/loader.c, linha 142). A fila que para de entregar antes do fim, por -ESTALE, e coberta pelo ramo seguinte.",
+    "97": "Ramo state != PLAYER_PLAYING no callback do timer. Todo caminho que tira o player de PLAYING para o timer sob o mesmo spinlock do callback, e num nucleo so o spinlock mascara a interrupcao: ou o callback rodou antes, ou o k_timer_stop removeu o prazo e ele nao roda mais. A guarda so teria efeito com mais de um nucleo.",
+    "121": "Saida do switch sem nenhum case. cmd_post recusa tipo desconhecido com -EINVAL, e a fila de comandos e privada de cmd.c, entao o player so recebe os cinco comandos tratados.",
+    "198": "Ramo loader_next_event != 1 depois de um resultado pronto e sem erro. O loader so marca pronto um resultado bem-sucedido quando a fila esta cheia ou ja contem o silencio final, entao ha sempre ao menos um evento. A defesa trata o caso como carga recusada.",
+    "205": "Ramo failure == 0, que troca o erro por -EIO. So e tomado pela terceira condicao da linha 198 (loader_next_event != 1 depois de um resultado pronto e sem erro), que pela razao registrada naquela linha nao ocorre; existe para que uma carga que falhou nunca seja publicada como load_error 0."
   },
 
   "src/snapshot.c": {

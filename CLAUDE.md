@@ -412,8 +412,10 @@ só para as duas implementações.
 
 A UI precisa do tempo decorrido sem interrogar o `player` a cada quadro. A
 solução é um **registro instantâneo de escritor único**: `{estado, base_us,
-total_us, faixa}`, escrito só pelo lado do player e lido sem bloqueio pela `ui`,
-que calcula `decorrido = agora - base_us`.
+total_us, faixa, load_error, error_line}`, escrito só pelo lado do player e lido
+sem bloqueio pela `ui`, que calcula `decorrido = agora - base_us`. Os dois
+últimos dizem por que a carga da faixa falhou e em que linha — é deles que sai
+a tela de "Arquivo inválido"; voltam a zero a cada seleção.
 
 Isso emenda a regra antiga de "sem estado global compartilhado", que era
 incompatível com o próprio requisito da barra de progresso. A regra correta é:
