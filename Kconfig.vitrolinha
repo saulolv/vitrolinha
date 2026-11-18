@@ -31,6 +31,14 @@ config VITROLINHA_STORAGE_FAKE
 	  Duas faixas RTTTL embutidas, sem cartão e sem sistema de arquivos.
 	  Ver src/storage_fake.c.
 
+config VITROLINHA_STORAGE_HOST
+	bool "CSVs de uma pasta do computador"
+	depends on BOARD_NATIVE_SIM && EXTERNAL_LIBC
+	help
+	  Lista os .csv da pasta em VITROLINHA_MUSIC_DIR, ou de fixtures/music
+	  relativo ao diretório de execução, pela libc do computador. Só existe
+	  no simulador. Ver src/storage_host.c.
+
 endchoice
 
 endmenu

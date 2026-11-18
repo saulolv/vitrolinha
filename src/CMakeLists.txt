@@ -25,18 +25,52 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/snapshot.c
   ${CMAKE_CURRENT_LIST_DIR}/storage_error.c
   ${CMAKE_CURRENT_LIST_DIR}/track.c
+  ${CMAKE_CURRENT_LIST_DIR}/parser_csv.c
+)
+
+# A interface. Condicional porque depende do LVGL, que só a aplicação liga: na
+# lista comum, cada suíte de teste tentaria compilá-la sem os cabeçalhos dele.
+target_sources_ifdef(CONFIG_LVGL app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/display.c
 )
 
-# Quem responde ao storage.h: o cartão ou a implementação de mentira, com duas
-# faixas embutidas no binário. A escolha é do Kconfig.vitrolinha — cartão na
-# placa, mentira no simulador, que não tem disco.
+# A saída implementada nesta etapa é a captura no computador. O player
+# entra junto dela; a placa ainda precisa de uma implementação tone_pwm.
+#
+# O loader entra junto do player, que é o único a chamá-lo, e não na lista
+# comum: ele define uma thread com pilha própria, o buffer de 4 KB da faixa e
+# a fila de 32 eventos — perto de 9 KB de RAM que, na placa, ficariam
+# reservados para uma thread que nunca parte. O parser_csv fica na lista
+# comum porque não tem estado estático: sem chamador, não custa RAM.
+#
+# Os dois exigem ainda `CONFIG_POLL`: o player espera comando e resultado de
+# carga num mesmo `k_poll`. O alvo de simulação e tests/playback/ a ligam; os
+# demais testes não usam o player e ficam sem ele. A omissão não é
+# silenciosa — quem chamar `player_init()` sem a opção não linka.
+if(CONFIG_BOARD_NATIVE_SIM AND CONFIG_EXTERNAL_LIBC)
+  target_sources(app PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/tone_trace.c
+    ${CMAKE_CURRENT_LIST_DIR}/playback_trace.c
+  )
+  target_sources_ifdef(CONFIG_POLL app PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/player.c
+    ${CMAKE_CURRENT_LIST_DIR}/loader.c
+  )
+endif()
+
+# Quem responde ao storage.h: o cartão, a implementação de mentira com duas
+# faixas embutidas no binário, ou os CSVs de uma pasta do computador. A escolha
+# é do Kconfig.vitrolinha — cartão na placa, mentira no simulador, que não tem
+# disco; a pasta só existe no simulador e só quando pedida.
 #
 # O `else` é a mentira, e não a ausência de storage, por causa dos testes: um
 # teste só enxerga as opções do projeto se tiver um Kconfig próprio que as
-# inclua, e só tests/storage_card/ tem. Os demais não enxergam a escolha e
-# caem aqui, com a mentira — que é o que eles usavam antes de ela existir.
-if(CONFIG_VITROLINHA_STORAGE_CARD)
+# inclua, como tests/storage_card/ e tests/storage_host/. Os demais não
+# enxergam a escolha e caem aqui, com a mentira — que é o que eles usavam
+# antes de ela existir.
+if(CONFIG_VITROLINHA_STORAGE_HOST)
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_host.c)
+elseif(CONFIG_VITROLINHA_STORAGE_CARD)
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage.c)
 else()
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_fake.c)

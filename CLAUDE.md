@@ -123,10 +123,19 @@ CONFIG_FS_FATFS_NUM_DIRS=2
 
 CONFIG_THREAD_ANALYZER=y                     # critério de avaliação: pilha por thread
 CONFIG_THREAD_ANALYZER_AUTO=y
-CONFIG_THREAD_ANALYZER_PRINT_THREAD_PRIORITY=y
 CONFIG_THREAD_ANALYZER_AUTO_THREAD_PRIORITY_OVERRIDE=y
 CONFIG_THREAD_ANALYZER_AUTO_THREAD_PRIORITY=10   # o padrão também é 0
+CONFIG_THREAD_ANALYZER_RUN_UNLOCKED=y        # padrão; travado, a varredura atrasaria o tick da nota
+CONFIG_THREAD_ANALYZER_ISR_STACK_USAGE=y     # padrão; o callback das notas roda na pilha de ISR
+CONFIG_LOG_BUFFER_SIZE=4096                  # o relatório inteiro tem de caber no log diferido
 ```
+
+O analisador fica em `boards/zbook_rp2350b_m33_p2.conf`, não em `prj.conf`:
+ele depende de `!ARCH_POSIX` e não existe no simulador.
+**`CONFIG_THREAD_ANALYZER_PRINT_THREAD_PRIORITY` não existe no Zephyr
+v4.4.2**, e atribuir símbolo inexistente reprova o build — a prioridade sai do
+`kernel thread list` do shell. Método, folgas e roteiro em
+[`docs/medicoes/pilhas-por-thread.md`](docs/medicoes/pilhas-por-thread.md).
 
 **`CONFIG_LV_Z_LVGL_WORKQUEUE_PRIORITY` tem padrão 0**, a maior prioridade
 preemptível. Deixado assim, o laço do LVGL **sobrepuja qualquer thread do
@@ -403,8 +412,10 @@ só para as duas implementações.
 
 A UI precisa do tempo decorrido sem interrogar o `player` a cada quadro. A
 solução é um **registro instantâneo de escritor único**: `{estado, base_us,
-total_us, faixa}`, escrito só pelo lado do player e lido sem bloqueio pela `ui`,
-que calcula `decorrido = agora - base_us`.
+total_us, faixa, load_error, error_line}`, escrito só pelo lado do player e lido
+sem bloqueio pela `ui`, que calcula `decorrido = agora - base_us`. Os dois
+últimos dizem por que a carga da faixa falhou e em que linha — é deles que sai
+a tela de "Arquivo inválido"; voltam a zero a cada seleção.
 
 Isso emenda a regra antiga de "sem estado global compartilhado", que era
 incompatível com o próprio requisito da barra de progresso. A regra correta é:
@@ -468,9 +479,14 @@ tentativa no `prj.conf`.
 
 - Nenhuma chamada de sistema de arquivos, de I²C ou de LVGL na thread `player`
   nem no callback do timer.
-- No callback do timer, só `pwm_set_cycles`, `k_msgq_get` com `K_NO_WAIT`,
-  `k_timer_start` e escrita no instantâneo. Nada que durma, registre log ou
-  aloque.
+- No callback do timer, só o que roda em interrupção sem esperar: o ajuste de
+  tom (`pwm_set_cycles` na placa, o registro em RAM no simulador), `k_msgq_get`
+  com `K_NO_WAIT`, `k_timer_start`/`k_timer_stop`, o spinlock que serializa o
+  callback com a thread `player`, o `k_sem_give` com que `loader_next_event`
+  pede reposição da fila, e `snapshot_publish`, que é escrita sob seqlock.
+  Nenhuma delas dorme: o spinlock só mascara interrupções por algumas
+  instruções, o `k_sem_give` nunca bloqueia quem dá, e o seqlock não faz o
+  escritor esperar o leitor. Nada que durma, registre log ou aloque.
 - O redesenho da UI é limitado por taxa fixa e nunca dispara por nota.
 - Buffers de tamanho fixo: o uso de RAM não depende do tamanho do arquivo.
 - Escrever o parser RTTTL, não importar biblioteca pronta — é entregável do
@@ -541,7 +557,8 @@ Instrumentar chaveando um dos LEDs 0-3 (GPIO 24-27) e medindo no terminal do LED
 já que não há pino de header confirmado. Manter na biblioteca um arquivo de
 calibração no formato CSV com N notas idênticas de duração conhecida. Usar
 `CONFIG_THREAD_ANALYZER` para o consumo de pilha por thread, que é critério de
-avaliação — e `k_cycle_get_64()`, não a versão de 32 bits, que dá a volta a cada
+avaliação — a tabela sai do console da placa com `scripts/stack_report.py`,
+pela regra de folga de `docs/medicoes/pilhas-por-thread.md` — e `k_cycle_get_64()`, não a versão de 32 bits, que dá a volta a cada
 28,6 s a 150 MHz e arruinaria uma medição de 60 s.
 
 ## Escopo em etapas

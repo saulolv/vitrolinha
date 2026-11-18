@@ -103,6 +103,21 @@ int cmd_post(enum cmd_kind kind, int16_t track);
 int cmd_get(struct cmd *out, k_timeout_t timeout);
 
 /**
+ * @brief Prepara um evento de `k_poll` que fica pronto quando há comando.
+ *
+ * Para o consumidor que espera por mais de uma fonte: o `player` espera,
+ * além do comando, o resultado da carga de uma faixa. O evento só observa a
+ * fila, que continua privada — retirar o comando continua sendo com
+ * cmd_get().
+ *
+ * @param event Evento a preparar. Não pode ser nulo.
+ *
+ * @note Exige `CONFIG_POLL`. Sem ela a função não é compilada, e quem a
+ *       chamar não linka.
+ */
+void cmd_poll_event_init(struct k_poll_event *event);
+
+/**
  * @brief Descarta todos os comandos pendentes.
  *
  * Usado ao trocar de faixa, para que botões apertados antes da troca não
