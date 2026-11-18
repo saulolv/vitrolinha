@@ -127,7 +127,6 @@ static void card_report(void)
 static int library_report(void)
 {
 	static struct track_meta library[LIBRARY_MAX];
-	static uint8_t buf[STORAGE_FILE_MAX];
 	int count;
 
 	LOG_INF("Faixas: %s",
@@ -142,16 +141,8 @@ static int library_report(void)
 	LOG_INF("Biblioteca: %d faixa(s)", count);
 
 	for (int i = 0; i < count; i++) {
-		int size = storage_load(i, buf, sizeof(buf));
-
-		if (size < 0) {
-			LOG_WRN("  [%u] %-16s  carga falhou: %d", library[i].index,
-				library[i].name, size);
-			continue;
-		}
-
-		LOG_INF("  [%u] %-16s  %d bytes%s", library[i].index, library[i].name,
-			size, library[i].valid ? "" : "  (invalida)");
+		LOG_INF("  [%u] %-16s%s", library[i].index, library[i].name,
+			library[i].valid ? "" : "  (invalida)");
 	}
 
 	return count;

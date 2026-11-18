@@ -25,6 +25,7 @@
 #define VITROLINHA_TEST_FAKE_DISK_H_
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -54,11 +55,14 @@ void fake_disk_register(bool registered);
 /**
  * @brief Põe ou tira o cartão do soquete.
  *
- * É o equivalente do pino de card-detect: mexe só no que
- * `disk_access_status` responde, sem apagar o conteúdo do volume — tirar e
+ * Atualiza a resposta de disk_access_status e o GPIO emulado de card-detect,
+ * disparando sua interrupção, sem apagar o conteúdo do volume — tirar e
  * pôr o mesmo cartão devolve o mesmo cartão.
  */
 void fake_disk_insert(bool inserted);
+
+/** @brief Número de consultas de status, para verificar ausência de polling. */
+uint32_t fake_disk_status_calls(void);
 
 /**
  * @brief Faz o cartão recusar a inicialização.

@@ -107,7 +107,7 @@ static struct loader_result await_load(uint32_t id)
 	return result;
 }
 
-ZTEST(playback, test_loader_substituicao_fila_e_reinicio)
+ZTEST(playback, test_loader_substituicao_vetor_e_reinicio)
 {
 	uint32_t old_id, id;
 	struct playback_event event;
@@ -119,11 +119,11 @@ ZTEST(playback, test_loader_substituicao_fila_e_reinicio)
 	result = await_load(id);
 	zassert_ok(result.status);
 	zassert_equal(640000, result.total_us);
+	/* Consome mais de 32 eventos sem ceder tempo para reposição. */
 	for (int i = 0; i <= 64; i++) {
 		zassert_equal(1, loader_next_event(id, &event));
 		zassert_equal(i * 10000, event.offset_us);
 		zassert_equal(i == 64 ? 0 : 1000, event.freq_hz);
-		k_msleep(1); /* Permite reposição pelo worker, inclusive após 32 eventos. */
 	}
 	zassert_equal(0, loader_next_event(id, &event));
 	file_path("4.csv");
@@ -131,7 +131,8 @@ ZTEST(playback, test_loader_substituicao_fila_e_reinicio)
 	old_id = id;
 	zassert_ok(loader_restart(old_id, &id));
 	zassert_equal(-ESTALE, loader_next_event(old_id, &event));
-	result = await_load(id);
+	/* Já está pronto, mesmo sem o arquivo e sem executar o worker. */
+	zassert_ok(loader_get_result(id, &result));
 	zassert_ok(result.status);
 	zassert_equal(1, loader_next_event(id, &event));
 	zassert_equal(0, event.offset_us);

@@ -20,6 +20,7 @@
  * blocos e exige o alinhamento natural do tipo.
  */
 K_MSGQ_DEFINE(cmd_queue, sizeof(struct cmd), CMD_QUEUE_DEPTH, 4);
+static struct k_sem *consumer_wakeup;
 
 /**
  * @brief Nomes dos comandos, na ordem de @ref cmd_kind.
@@ -38,6 +39,15 @@ static const char *const cmd_names[] = {
 
 BUILD_ASSERT(ARRAY_SIZE(cmd_names) == (size_t)CMD_KIND_COUNT,
 	     "cmd_names está fora de sincronia com enum cmd_kind");
+
+void cmd_set_wakeup(struct k_sem *wakeup)
+{
+	consumer_wakeup = wakeup;
+	if (wakeup != NULL) {
+		/* Permite consumir também comandos publicados antes do registro. */
+		k_sem_give(wakeup);
+	}
+}
 
 int cmd_post(enum cmd_kind kind, int16_t track)
 {
@@ -64,7 +74,12 @@ int cmd_post(enum cmd_kind kind, int16_t track)
 	/* Sempre K_NO_WAIT: isto roda em contexto de interrupção quando o
 	 * callback do subsistema `input` publica direto.
 	 */
-	return k_msgq_put(&cmd_queue, &msg, K_NO_WAIT);
+	int err = k_msgq_put(&cmd_queue, &msg, K_NO_WAIT);
+
+	if (err == 0 && consumer_wakeup != NULL) {
+		k_sem_give(consumer_wakeup);
+	}
+	return err;
 }
 
 int cmd_get(struct cmd *out, k_timeout_t timeout)

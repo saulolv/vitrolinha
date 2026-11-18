@@ -66,6 +66,37 @@ ZTEST(parser_csv, test_escala_fixture)
 	}
 }
 
+ZTEST(parser_csv, test_decode_vetor_completo_e_capacidade)
+{
+	struct playback_event events[5];
+	const uint32_t offsets[] = {0, 200000, 300000, 500000, 600000};
+	const uint32_t frequencies[] = {1000, 0, 1500, 0, 0};
+	struct parser_csv_error error;
+	size_t count;
+	uint32_t total;
+
+	zassert_ok(parser_csv_decode(pausas, sizeof(pausas), events,
+				     ARRAY_SIZE(events), &count, &total, &error));
+	zassert_equal(ARRAY_SIZE(events), count);
+	zassert_equal(600000, total);
+	zassert_equal(0, error.line);
+	for (size_t i = 0; i < count; i++) {
+		zassert_equal(offsets[i], events[i].offset_us);
+		zassert_equal(frequencies[i], events[i].freq_hz);
+	}
+	zassert_equal(-ENOSPC, parser_csv_decode(pausas, sizeof(pausas), events,
+					       4, &count, &total, &error));
+	zassert_equal(0, count);
+	zassert_equal(0, total);
+
+	static const uint8_t bad[] = HEADER "\n1000,200\n1500,0";
+
+	zassert_equal(-EINVAL, parser_csv_decode(bad, sizeof(bad) - 1, events,
+					       5, &count, &total, &error));
+	zassert_equal(3, error.line);
+	zassert_equal(0, count);
+}
+
 ZTEST(parser_csv, test_pausas_fixture_e_silencio_final)
 {
 	struct parser_csv parser;

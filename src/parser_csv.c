@@ -2,7 +2,8 @@
  * @file parser_csv.c
  * @brief Parser de pares frequência/duração em CSV, sem E/S ou alocação.
  *
- * A inicialização percorre a faixa inteira antes de publicar o iterador.
+ * A decodificação prepara todos os eventos em uma única passagem. A API de
+ * iteração continua disponível para consumidores que precisem dela.
  * A iteração relê o mesmo buffer imutável e calcula os instantes pela soma
  * inteira das durações. O último evento silencia no fim da faixa.
  */
@@ -145,8 +146,9 @@ static int read_event(struct parser_csv *parser, struct playback_event *out,
 	return 1;
 }
 
-int parser_csv_init(struct parser_csv *parser, const uint8_t *buffer,
-		    size_t length, struct parser_csv_error *error)
+static int parse_csv(struct parser_csv *parser, const uint8_t *buffer,
+		     size_t length, struct playback_event *events, size_t capacity,
+		     struct parser_csv_error *error)
 {
 	static const char header[] = "frequency_hz,duration_ms";
 
@@ -188,6 +190,13 @@ int parser_csv_init(struct parser_csv *parser, const uint8_t *buffer,
 		if (err < 0) {
 			return err;
 		}
+		if (events != NULL) {
+			/* Reserva também uma posição para o silêncio final. */
+			if (candidate.row_count + 1U >= capacity) {
+				return fail(error, candidate.line - 1U, 1U, -ENOSPC);
+			}
+			events[candidate.row_count] = event;
+		}
 		candidate.row_count++;
 	}
 
@@ -196,9 +205,39 @@ int parser_csv_init(struct parser_csv *parser, const uint8_t *buffer,
 	}
 
 	candidate.total_us = candidate.offset_us;
+	if (events != NULL) {
+		events[candidate.row_count] = (struct playback_event){
+			.offset_us = candidate.total_us, .freq_hz = 0U,
+		};
+	}
 	(void)parser_csv_rewind(&candidate);
 	*parser = candidate;
 	return 0;
+}
+
+int parser_csv_init(struct parser_csv *parser, const uint8_t *buffer,
+		    size_t length, struct parser_csv_error *error)
+{
+	return parse_csv(parser, buffer, length, NULL, 0, error);
+}
+
+int parser_csv_decode(const uint8_t *buffer, size_t length,
+		      struct playback_event *events, size_t capacity,
+		      size_t *count, uint32_t *total_us, struct parser_csv_error *error)
+{
+	if (events == NULL || count == NULL || total_us == NULL) {
+		return -EINVAL;
+	}
+	*count = 0;
+	*total_us = 0;
+	struct parser_csv parser;
+	int err = parse_csv(&parser, buffer, length, events, capacity, error);
+
+	if (err == 0) {
+		*count = parser.row_count + 1U;
+		*total_us = parser.total_us;
+	}
+	return err;
 }
 
 int parser_csv_next(struct parser_csv *parser, struct playback_event *out)

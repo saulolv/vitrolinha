@@ -26,16 +26,17 @@
 /**
  * @brief Quanto esperar por uma transição do monitor.
  *
- * O monitor sonda a cada 250 ms. Um segundo dá quatro sondagens de folga, e
- * em `native_sim` o relógio é simulado: a espera não custa tempo de parede.
+ * Dá folga ao debounce e à montagem. Em native_sim o relógio é simulado:
+ * a espera não custa tempo de parede.
  */
 #define SETTLE_TIMEOUT_MS 1000
 
-/** @brief Passo da espera. Bem abaixo do intervalo do monitor. */
+/** @brief Passo da espera pelo resultado da interrupção. */
 #define SETTLE_STEP_MS 25
 
 /** @brief O que @ref card_init devolveu na primeira e única chamada. */
 static int init_result;
+static enum card_state initial_state;
 
 /** @brief Quantas vezes o observador foi chamado desde o último preparo. */
 static int observed_calls;
@@ -68,9 +69,11 @@ static enum card_state settle(enum card_state expected)
 static void *card_setup(void)
 {
 	zassert_ok(fake_disk_setup(), "o disco de mentira nao subiu");
+	fake_disk_insert(true);
 
 	card_observe(on_card_change);
 	init_result = card_init();
+	initial_state = card_get_state();
 
 	return NULL;
 }
@@ -104,11 +107,12 @@ ZTEST_SUITE(card, NULL, card_setup, card_before, NULL, NULL);
 ZTEST(card, test_init_sobe_o_monitor)
 {
 	zassert_ok(init_result, "card_init devolveu %d", init_result);
+	zassert_equal(CARD_READY, initial_state, "nao montou o cartao presente no boot");
 }
 
 ZTEST(card, test_init_nao_cria_um_segundo_monitor)
 {
-	/* Duas threads sondando o mesmo soquete e montando o mesmo volume
+	/* Duas threads monitorando o mesmo soquete e montando o mesmo volume
 	 * seria o pior tipo de bug: intermitente e só na placa.
 	 */
 	zassert_equal(-EALREADY, card_init());
@@ -165,23 +169,23 @@ ZTEST(card, test_cartao_parado_nao_gera_notificacao)
 	fake_disk_insert(true);
 	zassert_equal(CARD_READY, settle(CARD_READY));
 
-	/* Várias sondagens do monitor com o cartão no mesmo estado. O
-	 * observador é de transição, não de amostragem: a interface não pode
-	 * redesenhar a tela quatro vezes por segundo à toa.
-	 */
+	uint32_t calls = fake_disk_status_calls();
+
+	/* Sem bordas, o monitor não deve consultar o disco nem notificar. */
 	k_msleep(SETTLE_TIMEOUT_MS);
 
+	zassert_equal(calls, fake_disk_status_calls(), "houve polling sem interrupcao");
 	zassert_equal(1, observed_calls, "notificou %d vezes sem nada mudar",
 		      observed_calls);
 	zassert_equal(CARD_READY, card_get_state());
 }
 
-ZTEST(card, test_refresh_nao_espera_a_cadencia_do_monitor)
+ZTEST(card, test_refresh_nao_espera_o_debounce_do_monitor)
 {
 	fake_disk_insert(true);
 
-	/* Sem dormir: quem chama pode forçar a avaliação em vez de esperar os
-	 * 250 ms da sondagem.
+	/* Sem dormir: quem chama pode forçar a avaliação em vez de esperar o
+	 * debounce do monitor.
 	 */
 	zassert_equal(CARD_READY, card_refresh());
 }
@@ -219,7 +223,7 @@ ZTEST(card, test_ilegivel_nao_e_tentado_de_novo_no_soquete)
 
 	/* O cartão "melhora" sem sair do soquete. Um volume não se conserta
 	 * sozinho, então o módulo não tem por que descobrir isso: insistir a
-	 * cada 250 ms gastaria barramento para sempre.
+	 * cada consulta gastaria barramento para sempre.
 	 */
 	fake_disk_fail_read(false);
 	k_msleep(SETTLE_TIMEOUT_MS);
@@ -242,6 +246,21 @@ ZTEST(card, test_reinsercao_tenta_montar_de_novo)
 	fake_disk_insert(true);
 
 	zassert_equal(CARD_READY, settle(CARD_READY), "a reinsercao nao remontou");
+}
+
+ZTEST(card, test_troca_rapida_invalida_a_montagem_anterior)
+{
+	fake_disk_insert(true);
+	zassert_equal(CARD_READY, settle(CARD_READY));
+
+	/* As duas bordas chegam antes do fim do debounce. O cartão seguinte
+	 * está ilegível; reutilizar a montagem antiga esconderia essa falha.
+	 */
+	fake_disk_insert(false);
+	fake_disk_fail_read(true);
+	fake_disk_insert(true);
+	zassert_equal(CARD_UNREADABLE, settle(CARD_UNREADABLE));
+	zassert_equal(2, observed_calls);
 }
 
 ZTEST(card, test_cartao_ruim_seguido_de_bom_monta)

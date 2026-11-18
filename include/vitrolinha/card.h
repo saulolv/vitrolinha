@@ -58,7 +58,8 @@ enum card_state {
 /**
  * @brief Notificação de mudança de estado.
  *
- * Chamada **na thread do monitor**, só quando o estado muda de fato, e já com
+ * Chamada pela thread que executa card_refresh (normalmente o monitor),
+ * quando o estado muda ou uma troca de mídia é detectada, e já com
  * a trava interna do módulo solta — então pode chamar qualquer coisa deste
  * cabeçalho sem risco de impasse. Não pode bloquear nem demorar: enquanto ela
  * roda, o monitor não observa o cartão.
@@ -86,13 +87,16 @@ void card_observe(card_observer_t observer);
  *
  * Faz uma avaliação síncrona antes de voltar, de modo que
  * @ref card_get_state já responda a verdade quando esta função retornar, e
- * só então cria a thread que observa inserção e remoção.
+ * só então cria a thread que aguarda interrupções nas duas bordas de sd_cd.
+ * A thread aguarda 20 ms sem novas bordas antes de montar/desmontar.
+ * Sem sd_cd (simulador comum), avalia uma vez e não cria monitor periódico.
  *
  * @retval 0         Monitor de pé. O estado inicial está em
  *                   @ref card_get_state — inclusive ::CARD_ABSENT, que não é
  *                   erro de inicialização.
  * @retval -EALREADY Já inicializado. Chamar duas vezes não cria um segundo
  *                   monitor.
+ * @retval outro     Erro ao configurar o GPIO ou sua interrupção.
  */
 int card_init(void);
 
@@ -120,7 +124,7 @@ bool card_ready(void);
  * @brief Reavalia o cartão agora, montando ou desmontando se preciso.
  *
  * O monitor chama isto sozinho; a aplicação só precisa chamar para forçar uma
- * tentativa fora da cadência do monitor.
+ * avaliação sem esperar a interrupção e o debounce do monitor.
  *
  * Transições possíveis:
  *
@@ -130,6 +134,9 @@ bool card_ready(void);
  * | ::CARD_ABSENT | dentro | ::CARD_READY ou ::CARD_UNREADABLE | tenta montar |
  * | ::CARD_UNREADABLE | dentro | ::CARD_UNREADABLE | **não** tenta de novo |
  * | ::CARD_READY | dentro | ::CARD_READY | nada |
+ *
+ * Uma remoção registrada pela interrupção invalida a montagem anterior,
+ * mesmo que o cartão já tenha sido reinserido quando a avaliação executar.
  *
  * A linha que importa é a terceira: um cartão que não montou não passa a
  * montar sozinho, e insistir a cada varredura só gastaria o barramento. A

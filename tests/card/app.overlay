@@ -1,0 +1,7 @@
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/ {
+	sd_cd: zephyr,user {
+		gpios = <&gpio0 1 GPIO_ACTIVE_LOW>;
+	};
+};

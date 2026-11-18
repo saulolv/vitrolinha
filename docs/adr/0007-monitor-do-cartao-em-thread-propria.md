@@ -1,5 +1,29 @@
 # O monitor do cartão é uma thread própria
 
+## Revisão: interrupção de presença
+
+A thread de prioridade 12 e pilha de 2 KiB permanece, mas a sondagem de
+250 ms foi substituída por interrupções nas duas bordas do GPIO `sd_cd`.
+O `sdhc_spi` configura e lê esse pino como entrada; a aplicação mantém essa
+configuração e acrescenta a interrupção no mesmo GPIO indicado por `cd-gpios`.
+
+O callback apenas registra a remoção e libera um semáforo. A thread espera
+20 ms sem novas bordas e executa a montagem/desmontagem fora da interrupção.
+Enquanto o cartão permanece estável, o monitor dorme sem consultar o disco.
+Uma remoção fica registrada mesmo se ocorrer reinserção durante o debounce,
+para não reutilizar a montagem da mídia anterior. A troca notifica o observador
+mesmo quando termina no mesmo estado.
+
+`card_init()` continua avaliando a presença inicial de forma síncrona. Sem
+`sd_cd`, como no simulador comum, não cria thread de monitoramento.
+Os testes usam GPIO emulado e FatFs; a validação elétrica depende da placa.
+
+A justificativa abaixo documenta a decisão original. Sua escolha de polling
+e rejeição da interrupção foram substituídas por esta revisão; a separação
+do trabalho de montagem em uma thread própria continua válida.
+
+## Decisão original
+
 O cartão precisa ser montado quando entra e desmontado quando sai, e a
 interface precisa saber disso sem interrogar o sistema de arquivos a cada
 quadro. A pergunta é onde esse trabalho mora.

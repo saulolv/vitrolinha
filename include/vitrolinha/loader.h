@@ -2,8 +2,8 @@
  * @file loader.h
  * @brief Contrato: carga assíncrona de CSV e fornecimento de eventos.
  *
- * O loader é dono do buffer de STORAGE_FILE_MAX bytes, do parser e de
- * uma fila de capacidade fixa. Sua thread faz E/S e validação; o player
+ * O loader é dono do buffer de STORAGE_FILE_MAX bytes e de um vetor fixo
+ * com todos os eventos da faixa atual. Sua thread faz E/S e conversão; o player
  * apenas solicita trabalho e consome resultados sem bloquear.
  *
  * Cada solicitação recebe um identificador para rejeitar respostas e
@@ -11,8 +11,8 @@
  * o produtor abandonar a solicitação anterior. Não há leitura do
  * armazenamento durante a reprodução de uma faixa já carregada.
  *
- * A fila tem 32 eventos. O worker repõe eventos da RAM à medida que o
- * player os consome. Pedidos usam um único slot substituível, sem espera.
+ * O vetor comporta qualquer CSV válido dentro de STORAGE_FILE_MAX. Durante
+ * a reprodução não há parsing nem reposição. Pedidos usam um slot substituível.
  */
 
 #ifndef VITROLINHA_LOADER_H_
@@ -22,6 +22,8 @@
 #include <stdint.h>
 
 #include <vitrolinha/event.h>
+
+struct k_sem;
 
 #ifdef __cplusplus
 extern "C" {
@@ -47,11 +49,17 @@ struct loader_result {
 int loader_init(void);
 
 /**
+ * @brief Registra o semáforo acordado ao concluir uma carga, inclusive com erro.
+ * @note O semáforo pertence ao consumidor e deve permanecer válido. NULL
+ *       desativa a notificação. O resultado é obtido por loader_get_result().
+ */
+void loader_set_wakeup(struct k_sem *wakeup);
+
+/**
  * @brief Solicita a carga e validação de uma faixa sem realizar E/S aqui.
  * @param track Índice obtido na última varredura da biblioteca.
  * @param request_id Recebe um identificador não nulo se a solicitação for aceita.
- * @return 0 se aceita; -EINVAL para argumentos inválidos; -ENOMSG se não
- *         houver espaço para registrar a solicitação.
+ * @return 0 se aceita; -EINVAL para argumentos inválidos.
  * @note Em caso de sucesso, substitui a solicitação anterior. O player
  *       deve antes parar seu timer e silenciar; em caso de erro, a
  *       solicitação anterior permanece válida. Somente contexto de thread.
@@ -59,7 +67,7 @@ int loader_init(void);
 int loader_request(int track, uint32_t *request_id);
 
 /**
- * @brief Consulta a conclusão da validação e do abastecimento inicial da fila.
+ * @brief Consulta a conclusão da conversão de todos os eventos da faixa.
  * @param request_id Identificador da solicitação a consultar.
  * @param out Resultado de destino; consultar status quando retornar 0.
  * @return 0 para resultado disponível, -EAGAIN enquanto prepara, -ESTALE
@@ -70,25 +78,25 @@ int loader_request(int track, uint32_t *request_id);
 int loader_get_result(uint32_t request_id, struct loader_result *out);
 
 /**
- * @brief Retira um evento já preparado da fila, sem E/S nem parsing.
+ * @brief Copia o próximo evento do vetor e avança o índice, sem E/S nem parsing.
  * @param request_id Identificador da faixa cujo resultado indicou sucesso.
  * @param out Evento de destino; válido apenas no retorno 1.
  * @return 1 para evento, 0 após consumir o silêncio final, -EAGAIN para
- *         fila temporariamente vazia, -ESTALE para solicitação inválida
+ *         faixa ainda não preparada, -ESTALE para solicitação inválida
  *         ou -EINVAL para argumento inválido.
- * @note Chamável do timer, sem espera. Fila vazia antes do fim exige
- *       tratamento de falha pelo player; não significa fim normal da faixa.
+ * @note Chamável do timer, sem espera. Após preparação bem-sucedida,
+ *       todos os eventos estão disponíveis até substituição ou cancelamento.
  */
 int loader_next_event(uint32_t request_id, struct playback_event *out);
 
 /**
- * @brief Solicita reinício da faixa em RAM, sem reler seu arquivo.
+ * @brief Reinicia o índice da faixa em RAM, sem E/S nem parsing.
  * @param request_id Identificador da faixa já validada e ainda retida.
- * @param new_request_id Recebe a nova geração, a consultar por get_result.
+ * @param new_request_id Recebe a nova geração, já pronta para consumo.
  * @return 0 se aceita; -ESTALE para faixa indisponível; -EINVAL para
- *         argumentos inválidos; -ENOMSG se não puder enfileirar o pedido.
+ *         argumentos inválidos.
  * @note Em sucesso invalida request_id; em erro mantém a geração anterior.
- *       Chamar com timer parado. O loader reinicia o parser e repõe a fila.
+ *       Chamar com timer parado. Operação síncrona; não gera notificação.
  */
 int loader_restart(uint32_t request_id, uint32_t *new_request_id);
 

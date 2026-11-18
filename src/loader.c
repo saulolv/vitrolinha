@@ -1,10 +1,10 @@
 /**
  * @file loader.c
- * @brief Worker proprietário do CSV/parser e produtor de uma fila de 32 eventos.
+ * @brief Prepara somente a faixa selecionada em um vetor fixo de eventos.
  *
  * Pedidos substituem a geração corrente sem esperar E/S. Somente o worker
- * reutiliza o buffer; resultados de gerações antigas nunca são publicados.
- * O spinlock protege apenas metadados e operações de fila sem espera.
+ * escreve no vetor, enquanto ready é falso. Resultados antigos nunca são
+ * publicados. Depois da publicação, o player copia os eventos pelo índice.
  */
 #include <vitrolinha/loader.h>
 #include <vitrolinha/parser_csv.h>
@@ -13,36 +13,34 @@
 #include <errno.h>
 #include <zephyr/kernel.h>
 
-K_MSGQ_DEFINE(events, sizeof(struct playback_event), 32, 4);
+/* A menor linha musical ocupa 4 bytes ("0,1\n"). O espaço do cabeçalho
+ * cobre a última linha sem LF e o evento adicional de silêncio final.
+ */
+static struct playback_event events[STORAGE_FILE_MAX / 4U];
 K_SEM_DEFINE(work, 0, 1);
 static struct k_spinlock lock;
 static uint8_t buffer[STORAGE_FILE_MAX];
-static struct parser_csv parser;
+static struct k_sem *consumer_wakeup;
+static size_t event_count;
+static size_t cursor;
 static struct loader_result result;
 static uint32_t generation;
 static uint32_t active_id;
 static int selected_track;
-static bool restart;
 static bool ready;
-static bool finished;
 
-/** @brief Invalida a fila antiga; chamado com lock adquirido. */
+/** @brief Gera um identificador não nulo; exige lock adquirido. */
 static uint32_t new_generation(void)
 {
 	if (++generation == 0) {
 		generation++;
 	}
 	active_id = generation;
-	ready = false;
-	finished = false;
-	k_msgq_purge(&events);
 	return active_id;
 }
 
 static void loader_worker(void *a, void *b, void *c)
 {
-	uint32_t worker_id = 0;
-
 	ARG_UNUSED(a);
 	ARG_UNUSED(b);
 	ARG_UNUSED(c);
@@ -51,70 +49,38 @@ static void loader_worker(void *a, void *b, void *c)
 		k_spinlock_key_t key = k_spin_lock(&lock);
 		uint32_t id = active_id;
 		int track = selected_track;
-		bool rewind = restart;
+		bool pending = id != 0 && !ready;
 
 		k_spin_unlock(&lock, key);
-		if (id == 0) {
+		if (!pending) {
 			continue;
 		}
-		if (id != worker_id) {
-			struct parser_csv_error error = {0};
-			int status;
 
-			worker_id = id;
-			if (rewind) {
-				status = parser_csv_rewind(&parser);
-			} else {
-				int size = storage_load(track, buffer, sizeof(buffer));
+		struct parser_csv_error error = {0};
+		size_t count = 0;
+		uint32_t total_us = 0;
+		int size = storage_load(track, buffer, sizeof(buffer));
+		int status = size < 0 ? size :
+			parser_csv_decode(buffer, size, events, ARRAY_SIZE(events),
+					  &count, &total_us, &error);
 
-				status = size < 0 ? size :
-					parser_csv_init(&parser, buffer, size, &error);
-			}
-			key = k_spin_lock(&lock);
-			if (id != active_id) {
-				k_spin_unlock(&lock, key);
-				continue;
-			}
-			result = (struct loader_result){
-				.track = track, .status = status, .error_line = error.line,
-				.total_us = status == 0 ? parser.total_us : 0,
-			};
-			ready = status != 0;
+		key = k_spin_lock(&lock);
+		if (id != active_id) {
 			k_spin_unlock(&lock, key);
-			if (status != 0) {
-				continue;
-			}
+			continue;
 		}
+		result = (struct loader_result){
+			.track = track, .status = status, .error_line = error.line,
+			.total_us = total_us,
+		};
+		event_count = count;
+		cursor = 0;
+		ready = true;
+		struct k_sem *wakeup = consumer_wakeup;
 
-		for (;;) {
-			key = k_spin_lock(&lock);
-			if (id != active_id || result.status != 0) {
-				k_spin_unlock(&lock, key);
-				break;
-			}
-			if (finished || k_msgq_num_free_get(&events) == 0) {
-				ready = true;
-				k_spin_unlock(&lock, key);
-				break;
-			}
-			k_spin_unlock(&lock, key);
-
-			struct playback_event event;
-			int status = parser_csv_next(&parser, &event);
-
-			key = k_spin_lock(&lock);
-			if (id != active_id) {
-				k_spin_unlock(&lock, key);
-				break;
-			}
-			if (status == 1) {
-				(void)k_msgq_put(&events, &event, K_NO_WAIT);
-				finished = parser.final_event_emitted;
-			} else {
-				result.status = status < 0 ? status : -EIO;
-				ready = true;
-			}
-			k_spin_unlock(&lock, key);
+		k_spin_unlock(&lock, key);
+		if (wakeup != NULL) {
+			k_sem_give(wakeup);
 		}
 	}
 }
@@ -127,6 +93,19 @@ int loader_init(void)
 	return 0;
 }
 
+void loader_set_wakeup(struct k_sem *wakeup)
+{
+	k_spinlock_key_t key = k_spin_lock(&lock);
+
+	consumer_wakeup = wakeup;
+	bool completed = ready;
+
+	k_spin_unlock(&lock, key);
+	if (completed && wakeup != NULL) {
+		k_sem_give(wakeup);
+	}
+}
+
 int loader_request(int track, uint32_t *request_id)
 {
 	if (track < 0 || track >= LIBRARY_MAX || request_id == NULL) {
@@ -135,7 +114,7 @@ int loader_request(int track, uint32_t *request_id)
 	k_spinlock_key_t key = k_spin_lock(&lock);
 
 	selected_track = track;
-	restart = false;
+	ready = false;
 	*request_id = new_generation();
 	k_spin_unlock(&lock, key);
 	k_sem_give(&work);
@@ -169,17 +148,14 @@ int loader_next_event(uint32_t request_id, struct playback_event *out)
 		status = -ESTALE;
 	} else if (!ready || result.status != 0) {
 		status = -EAGAIN;
-	} else if (k_msgq_get(&events, out, K_NO_WAIT) == 0) {
+	} else if (cursor < event_count) {
+		*out = events[cursor++];
 		status = 1;
 	} else {
-		status = finished ? 0 : -EAGAIN;
+		status = 0;
 	}
-	bool refill = status == 1 && !finished;
 
 	k_spin_unlock(&lock, key);
-	if (refill) {
-		k_sem_give(&work);
-	}
 	return status;
 }
 
@@ -194,10 +170,9 @@ int loader_restart(uint32_t request_id, uint32_t *new_request_id)
 		k_spin_unlock(&lock, key);
 		return -ESTALE;
 	}
-	restart = true;
+	cursor = 0;
 	*new_request_id = new_generation();
 	k_spin_unlock(&lock, key);
-	k_sem_give(&work);
 	return 0;
 }
 
@@ -211,7 +186,6 @@ int loader_cancel(uint32_t request_id)
 	}
 	active_id = 0;
 	ready = false;
-	k_msgq_purge(&events);
 	k_spin_unlock(&lock, key);
 	return 0;
 }

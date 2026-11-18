@@ -10,6 +10,8 @@
 #include <vitrolinha/card.h>
 
 #include <zephyr/drivers/disk.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/gpio/gpio_emul.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/kernel.h>
 #include <zephyr/storage/disk_access.h>
@@ -45,6 +47,8 @@ static bool initialized;
 static bool failing_init;
 static bool failing_read;
 static bool failing_deinit;
+static uint32_t status_calls;
+static const struct gpio_dt_spec card_detect = GPIO_DT_SPEC_GET(DT_NODELABEL(sd_cd), gpios);
 
 static int fake_init(struct disk_info *disk)
 {
@@ -66,6 +70,7 @@ static int fake_init(struct disk_info *disk)
 static int fake_status(struct disk_info *disk)
 {
 	ARG_UNUSED(disk);
+	status_calls++;
 
 	if (!inserted) {
 		return DISK_STATUS_NOMEDIA;
@@ -155,6 +160,10 @@ int fake_disk_setup(void)
 	bool force = true;
 	int err;
 
+	err = gpio_pin_configure_dt(&card_detect, GPIO_INPUT);
+	if (err != 0) {
+		return err;
+	}
 	fake_disk_register(true);
 
 	/* Formatar exige cartão no soquete. O `dev_id` do FatFs é a string do
@@ -197,6 +206,14 @@ void fake_disk_register(bool present)
 void fake_disk_insert(bool present)
 {
 	inserted = present;
+	int err = gpio_emul_input_set(card_detect.port, card_detect.pin, !present);
+
+	__ASSERT_NO_MSG(err == 0);
+}
+
+uint32_t fake_disk_status_calls(void)
+{
+	return status_calls;
 }
 
 void fake_disk_fail_init(bool failing)
@@ -218,7 +235,7 @@ void fake_disk_reset(void)
 {
 	fake_disk_register(true);
 
-	inserted = false;
+	fake_disk_insert(false);
 	failing_init = false;
 	failing_read = false;
 	failing_deinit = false;

@@ -18,6 +18,7 @@
 
 #include <vitrolinha/card.h>
 
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -44,17 +45,9 @@ LOG_MODULE_REGISTER(card, LOG_LEVEL_INF);
  */
 #define CARD_DISK_NAME (CARD_MOUNT_POINT + 1)
 
-/**
- * @brief Intervalo entre duas olhadas no pino de detecção.
- *
- * O pino de card-detect não tem interrupção: o `sdhc_spi` o configura como
- * `GPIO_INPUT` puro e a pilha SD só o expõe por consulta. Logo, sondagem.
- *
- * 250 ms é o tempo entre encostar o cartão no soquete e a tela reagir. Mais
- * curto não melhora nada perceptível — uma inserção humana leva bem mais do
- * que isso — e mais longo faz a placa parecer travada.
- */
-#define CARD_POLL_INTERVAL_MS 250
+/** @brief Tempo sem novas bordas antes de avaliar o contato mecânico. */
+#define CARD_DEBOUNCE_MS 20
+#define CARD_HAS_DETECT DT_NODE_HAS_PROP(DT_NODELABEL(sd_cd), gpios)
 
 /**
  * @brief Pilha do monitor.
@@ -122,8 +115,29 @@ static card_observer_t card_observer;
  */
 static K_MUTEX_DEFINE(card_lock);
 
+/* Preserva uma remoção mesmo se houver reinserção antes do debounce terminar. */
+static atomic_t removal_pending;
+
+#if CARD_HAS_DETECT
+static const struct gpio_dt_spec card_detect = GPIO_DT_SPEC_GET(DT_NODELABEL(sd_cd), gpios);
+static struct gpio_callback card_detect_callback;
+static K_SEM_DEFINE(card_change, 0, 1);
 static struct k_thread card_monitor_thread;
 static K_THREAD_STACK_DEFINE(card_monitor_stack, CARD_MONITOR_STACK_SIZE);
+
+/** @brief A interrupção só registra a remoção e acorda a thread de montagem. */
+static void card_detect_changed(const struct device *port, struct gpio_callback *callback,
+				gpio_port_pins_t pins)
+{
+	ARG_UNUSED(port);
+	ARG_UNUSED(callback);
+	ARG_UNUSED(pins);
+	if (gpio_pin_get_dt(&card_detect) == 0) {
+		atomic_set(&removal_pending, 1);
+	}
+	k_sem_give(&card_change);
+}
+#endif
 
 /**
  * @brief Há cartão no soquete?
@@ -267,10 +281,20 @@ enum card_state card_refresh(void)
 
 	(void)k_mutex_lock(&card_lock, K_FOREVER);
 
-	if (!card_slot_occupied()) {
+	bool removed = atomic_set(&removal_pending, 0) != 0;
+
+	if (removed) {
 		if (card_mounted) {
 			card_force_unmount();
 		} else if (card_get_state() != CARD_ABSENT) {
+			card_release_disk();
+		}
+	}
+
+	if (!card_slot_occupied()) {
+		if (card_mounted) {
+			card_force_unmount();
+		} else if (!removed && card_get_state() != CARD_ABSENT) {
 			/* Estava presente e ilegível: a montagem que falhou pode
 			 * ter deixado o cartão inicializado para trás.
 			 */
@@ -280,10 +304,9 @@ enum card_state card_refresh(void)
 		next = CARD_ABSENT;
 	} else if (card_mounted) {
 		next = CARD_READY;
-	} else if (card_get_state() == CARD_UNREADABLE) {
+	} else if (!removed && card_get_state() == CARD_UNREADABLE) {
 		/* Já tentamos montar este cartão e não deu. Um volume não se
-		 * conserta sozinho dentro do soquete, e insistir a cada 250 ms
-		 * só gastaria barramento. A próxima tentativa vem da remoção.
+		 * conserta sozinho dentro do soquete. Só tenta de novo após remoção.
 		 */
 		next = CARD_UNREADABLE;
 	} else if (card_try_mount() == 0) {
@@ -294,6 +317,8 @@ enum card_state card_refresh(void)
 	}
 
 	changed = publish(next);
+	/* Uma troca rápida pode terminar no mesmo estado, mas é outra mídia. */
+	changed |= removed && next != CARD_ABSENT;
 
 	k_mutex_unlock(&card_lock);
 
@@ -306,13 +331,8 @@ enum card_state card_refresh(void)
 	return next;
 }
 
-/**
- * @brief Laço do monitor: dorme, olha o soquete, reage à mudança.
- *
- * Sondar é a única opção — ver @ref CARD_POLL_INTERVAL_MS. Dormir primeiro e
- * avaliar depois é de propósito: @ref card_init já avaliou uma vez antes de
- * criar esta thread.
- */
+#if CARD_HAS_DETECT
+/** @brief Aguarda uma interrupção e o fim das oscilações antes de montar. */
 static void card_monitor(void *unused1, void *unused2, void *unused3)
 {
 	ARG_UNUSED(unused1);
@@ -320,10 +340,14 @@ static void card_monitor(void *unused1, void *unused2, void *unused3)
 	ARG_UNUSED(unused3);
 
 	for (;;) {
-		k_sleep(K_MSEC(CARD_POLL_INTERVAL_MS));
+		k_sem_take(&card_change, K_FOREVER);
+		while (k_sem_take(&card_change, K_MSEC(CARD_DEBOUNCE_MS)) == 0) {
+			/* Cada nova borda reinicia o intervalo de estabilização. */
+		}
 		(void)card_refresh();
 	}
 }
+#endif
 
 void card_observe(card_observer_t observer)
 {
@@ -336,18 +360,37 @@ int card_init(void)
 		return -EALREADY;
 	}
 
-	card_started = true;
+#if CARD_HAS_DETECT
+	if (!gpio_is_ready_dt(&card_detect)) {
+		return -ENODEV;
+	}
+	int err = gpio_pin_configure_dt(&card_detect, GPIO_INPUT);
 
-	/* Avaliar antes de criar a thread: quem chamou tem direito de
-	 * encontrar o estado pronto no `card_get_state` da linha seguinte, em
-	 * vez de uma janela de 250 ms em que o cartão ainda é "ausente".
-	 */
+	if (err != 0) {
+		return err;
+	}
+	gpio_init_callback(&card_detect_callback, card_detect_changed, BIT(card_detect.pin));
+	err = gpio_add_callback(card_detect.port, &card_detect_callback);
+	if (err != 0) {
+		return err;
+	}
+	err = gpio_pin_interrupt_configure_dt(&card_detect, GPIO_INT_EDGE_BOTH);
+	if (err != 0) {
+		(void)gpio_remove_callback(card_detect.port, &card_detect_callback);
+		return err;
+	}
+#endif
+
+	card_started = true;
+	/* Trata também quem liga a placa com o cartão já inserido. */
 	(void)card_refresh();
 
+#if CARD_HAS_DETECT
 	(void)k_thread_create(&card_monitor_thread, card_monitor_stack,
 			      K_THREAD_STACK_SIZEOF(card_monitor_stack), card_monitor, NULL,
 			      NULL, NULL, CARD_MONITOR_PRIORITY, 0, K_NO_WAIT);
 	(void)k_thread_name_set(&card_monitor_thread, "card");
+#endif
 
 	return 0;
 }

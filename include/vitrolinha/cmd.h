@@ -72,6 +72,13 @@ struct cmd {
 #define CMD_QUEUE_DEPTH 8U
 
 /**
+ * @brief Registra o semáforo acordado quando um comando é enfileirado.
+ * @note Registrar na inicialização, antes de habilitar os produtores.
+ *       O semáforo deve permanecer válido; NULL desativa a notificação.
+ */
+void cmd_set_wakeup(struct k_sem *wakeup);
+
+/**
  * @brief Enfileira um comando. Nunca bloqueia.
  *
  * Chamável de thread ou de contexto de interrupção, o que importa porque os

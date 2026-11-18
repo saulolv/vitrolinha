@@ -3,7 +3,7 @@
  * @brief Transporte por comandos e aplicação de eventos em prazos absolutos.
  *
  * O lock serializa a thread e o timer. Nenhum deles lê arquivos ou interpreta
- * CSV; durante a carga a thread consulta o resultado a cada milissegundo.
+ * CSV. A thread dorme até receber um comando ou uma conclusão de carga.
  */
 #include <vitrolinha/player.h>
 #include <vitrolinha/cmd.h>
@@ -22,6 +22,7 @@ static struct playback_event next;
 static uint32_t request_id;
 static size_t library_count;
 static bool loading;
+K_SEM_DEFINE(player_wakeup, 0, 1);
 
 static uint64_t now_us(void)
 {
@@ -59,7 +60,7 @@ static void apply_current(void)
 		state.base_us = state.total_us;
 		snapshot_publish(&state);
 	} else if (status != 1) {
-		/* Fila vazia antes do silêncio final é falha, não fim de faixa. */
+		/* Evento indisponível antes do silêncio final é falha. */
 		stop_at(current.offset_us);
 	} else {
 		arm_next();
@@ -190,12 +191,16 @@ static void player_worker(void *a, void *b, void *c)
 	ARG_UNUSED(c);
 	for (;;) {
 		struct cmd command;
-		int err = cmd_get(&command, loading ? K_MSEC(1) : K_FOREVER);
+
+		k_sem_take(&player_wakeup, K_FOREVER);
+		while (cmd_get(&command, K_NO_WAIT) == 0) {
+			k_spinlock_key_t key = k_spin_lock(&lock);
+
+			handle_command(&command);
+			k_spin_unlock(&lock, key);
+		}
 		k_spinlock_key_t key = k_spin_lock(&lock);
 
-		if (err == 0) {
-			handle_command(&command);
-		}
 		if (loading) {
 			check_load();
 		}
@@ -213,6 +218,8 @@ int player_init(size_t track_count)
 	library_count = track_count;
 	k_timer_init(&timer, timer_expired, NULL);
 	snapshot_publish(&state);
+	cmd_set_wakeup(&player_wakeup);
+	loader_set_wakeup(&player_wakeup);
 	k_thread_start(player_thread);
 	return 0;
 }
