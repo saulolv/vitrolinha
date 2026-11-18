@@ -1,5 +1,5 @@
 /** @file main.c
- * @brief Três testes do fluxo CSV -> loader -> player -> captura no host.
+ * @brief Testes do fluxo CSV -> loader -> player -> captura no host.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <vitrolinha/cmd.h>
@@ -9,6 +9,8 @@
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/tone.h>
+
+#include "host_libc_fault.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -191,6 +193,110 @@ ZTEST(playback, test_trace_timestamps_exportacao_e_limite)
 	zassert_equal(-ENOSPC, playback_trace_export_csv(path));
 }
 
+ZTEST(playback, test_trace_argumentos_e_falhas_de_exportacao)
+{
+	zassert_equal(-EINVAL, playback_trace_read(0, NULL));
+	zassert_equal(-EINVAL, playback_trace_export_csv(NULL));
+	zassert_equal(-EINVAL, playback_trace_export_csv(""));
+
+	zassert_ok(playback_trace_begin(100));
+	zassert_equal(-EINVAL, playback_trace_record(50, 1000));
+	zassert_equal(-EBUSY, playback_trace_export_csv("/dev/full"));
+	zassert_ok(playback_trace_record(100, 1000));
+	zassert_ok(playback_trace_end(200));
+
+	file_path("ausente/trace.csv");
+	zassert_equal(-EIO, playback_trace_export_csv(path));
+	/* Poucas linhas cabem no buffer do stream: o erro só aparece no fclose. */
+	zassert_equal(-EIO, playback_trace_export_csv("/dev/full"));
+
+	/* Muitas linhas transbordam o buffer: o erro aparece já nas escritas. */
+	zassert_ok(playback_trace_begin(0));
+	for (size_t i = 0; i < PLAYBACK_TRACE_CAPACITY - 1U; i++) {
+		zassert_ok(playback_trace_record(i, 1000));
+	}
+	zassert_ok(playback_trace_end(PLAYBACK_TRACE_CAPACITY));
+	zassert_equal(-EIO, playback_trace_export_csv("/dev/full"));
+}
+
+ZTEST(playback, test_loader_argumentos_e_pedidos_fora_de_hora)
+{
+	uint32_t id, other;
+	struct loader_result result;
+	struct playback_event event;
+
+	zassert_equal(-EINVAL, loader_request(-1, &id));
+	zassert_equal(-EINVAL, loader_request(LIBRARY_MAX, &id));
+	zassert_equal(-EINVAL, loader_request(0, NULL));
+	zassert_equal(-EINVAL, loader_get_result(0, &result));
+	zassert_equal(-EINVAL, loader_next_event(0, &event));
+	zassert_equal(-EINVAL, loader_restart(0, &other));
+	zassert_equal(-ESTALE, loader_cancel(0));
+
+	/* O teste é cooperativo: até ele dormir, o worker não roda. */
+	zassert_ok(loader_request(4, &id));
+	zassert_equal(-EINVAL, loader_get_result(id, NULL));
+	zassert_equal(-EINVAL, loader_next_event(id, NULL));
+	zassert_equal(-EINVAL, loader_restart(id, NULL));
+	zassert_equal(-EAGAIN, loader_get_result(id, &result));
+	zassert_equal(-EAGAIN, loader_next_event(id, &event));
+	zassert_equal(-ESTALE, loader_restart(id, &other));
+	/* Cancelado antes de o worker acordar: ele acorda sem pedido e volta. */
+	zassert_ok(loader_cancel(id));
+	zassert_equal(-ESTALE, loader_cancel(id));
+	zassert_equal(-ESTALE, loader_restart(id, &other));
+	k_msleep(5);
+
+	/* Consumo mais rápido que a reposição: fila vazia não é fim de faixa. */
+	zassert_ok(loader_request(4, &id));
+	result = await_load(id);
+	zassert_ok(result.status);
+	for (int i = 0; i < 32; i++) {
+		zassert_equal(1, loader_next_event(id, &event));
+	}
+	zassert_equal(-EAGAIN, loader_next_event(id, &event));
+	k_msleep(1);
+	zassert_equal(1, loader_next_event(id, &event));
+	zassert_equal(32 * 10000, event.offset_us);
+	zassert_ok(loader_cancel(id));
+
+	/* Faixa que o storage não entrega: o erro dele é o resultado. */
+	zassert_ok(loader_request(10, &id));
+	result = await_load(id);
+	zassert_equal(-ENOENT, result.status);
+	zassert_equal(-EAGAIN, loader_next_event(id, &event));
+	zassert_equal(-ESTALE, loader_restart(id, &other));
+	zassert_ok(loader_cancel(id));
+}
+
+static uint32_t hooked_id;
+static int hooked_err;
+
+/** @brief Pedido novo no meio da leitura do arquivo pelo worker. */
+static void replace_request(void)
+{
+	hooked_err = loader_request(2, &hooked_id);
+}
+
+ZTEST(playback, test_loader_pedido_substituido_durante_a_leitura)
+{
+	uint32_t id;
+	struct loader_result result;
+
+	hooked_id = 0;
+	hooked_err = -1;
+	host_libc_fault_on_read(replace_request);
+	zassert_ok(loader_request(0, &id));
+	k_msleep(5);
+	zassert_ok(hooked_err);
+	/* A carga que terminou depois de substituída não é publicada. */
+	zassert_equal(-ESTALE, loader_get_result(id, &result));
+	result = await_load(hooked_id);
+	zassert_ok(result.status);
+	zassert_equal(2, result.track);
+	zassert_ok(loader_cancel(hooked_id));
+}
+
 static struct player_snapshot await_state(enum player_state wanted, int track)
 {
 	struct player_snapshot snap;
@@ -205,6 +311,137 @@ static struct player_snapshot await_state(enum player_state wanted, int track)
 	zassert_true(false, "estado %d, faixa %d; obtido %u, %d",
 		     wanted, track, snap.state, snap.track);
 	return snap;
+}
+
+/** @brief O player é iniciado uma vez por processo, por quem chegar antes. */
+static void start_player(void)
+{
+	static bool started;
+
+	cmd_flush();
+	if (!started) {
+		zassert_equal(-EINVAL, player_init(LIBRARY_MAX + 1U));
+		zassert_ok(player_init(5));
+		started = true;
+	}
+}
+
+/** @brief Toma o loader do player, como se outro pedido o substituísse. */
+static void steal_loader(void)
+{
+	uint32_t id;
+
+	if (loader_request(1, &id) == 0) {
+		(void)loader_cancel(id);
+	}
+}
+
+static struct player_snapshot settle(void)
+{
+	struct player_snapshot snap;
+
+	k_msleep(5);
+	snapshot_read(&snap);
+	return snap;
+}
+
+ZTEST(playback, test_player_falhas_e_comandos_fora_de_hora)
+{
+	struct player_snapshot before, snap;
+
+	start_player();
+	(void)playback_trace_end(clock_us());
+
+	/* Faixa além da biblioteca: ignorada. */
+	snapshot_read(&before);
+	zassert_ok(cmd_post(CMD_SELECT, 6));
+	snap = settle();
+	zassert_equal(before.state, snap.state);
+	zassert_equal(before.track, snap.track);
+
+	/* Arquivo inválido: para na faixa, e tocar de novo tenta carregá-la. */
+	zassert_ok(cmd_post(CMD_SELECT, 3));
+	snap = settle();
+	zassert_equal(PLAYER_STOPPED, snap.state);
+	zassert_equal(3, snap.track);
+	zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
+	snap = settle();
+	zassert_equal(PLAYER_STOPPED, snap.state);
+	zassert_equal(3, snap.track);
+
+	/* Parar durante a carga cancela o pedido: nada chega a tocar. */
+	zassert_ok(playback_trace_begin(clock_us()));
+	zassert_ok(cmd_post(CMD_SELECT, 0));
+	zassert_ok(cmd_post(CMD_STOP, TRACK_NONE));
+	k_msleep(300);
+	snapshot_read(&snap);
+	zassert_equal(PLAYER_STOPPED, snap.state);
+	zassert_equal(0, snap.track);
+
+	/* Tocar/pausar durante a carga é ignorado. */
+	zassert_ok(cmd_post(CMD_SELECT, 0));
+	zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
+	snap = settle();
+	zassert_equal(PLAYER_PLAYING, snap.state);
+	zassert_ok(cmd_post(CMD_STOP, TRACK_NONE));
+	(void)await_state(PLAYER_STOPPED, 0);
+	zassert_ok(playback_trace_end(clock_us()));
+
+	/* Saída recusando o primeiro tom: para no início. */
+	zassert_ok(cmd_post(CMD_SELECT, 1));
+	snap = settle();
+	zassert_equal(PLAYER_STOPPED, snap.state);
+	zassert_equal(1, snap.track);
+	zassert_equal(0, snap.base_us);
+
+	/* Saída recusando o silêncio da pausa: para em vez de pausar. */
+	zassert_ok(playback_trace_begin(clock_us()));
+	zassert_ok(cmd_post(CMD_SELECT, 0));
+	(void)await_state(PLAYER_PLAYING, 0);
+	zassert_ok(playback_trace_end(clock_us()));
+	zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
+	snap = settle();
+	zassert_equal(PLAYER_STOPPED, snap.state);
+
+	/* Saída recusando o tom da retomada: para em vez de retomar. */
+	zassert_ok(playback_trace_begin(clock_us()));
+	zassert_ok(cmd_post(CMD_SELECT, 0));
+	(void)await_state(PLAYER_PLAYING, 0);
+	zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
+	(void)await_state(PLAYER_PAUSED, 0);
+	zassert_ok(playback_trace_end(clock_us()));
+	zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
+	snap = settle();
+	zassert_equal(PLAYER_STOPPED, snap.state);
+
+	/* Fila que deixa de entregar antes do silêncio final: falha, não fim. */
+	zassert_ok(playback_trace_begin(clock_us()));
+	zassert_ok(cmd_post(CMD_SELECT, 0));
+	(void)await_state(PLAYER_PLAYING, 0);
+	steal_loader();
+	snap = await_state(PLAYER_STOPPED, 0);
+	zassert_equal(250000, snap.base_us);
+	zassert_true(snap.base_us < snap.total_us);
+
+	/* Sem a faixa retida no loader, tocar carrega a mesma faixa de novo. */
+	zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
+	(void)await_state(PLAYER_PLAYING, 0);
+	zassert_ok(cmd_post(CMD_STOP, TRACK_NONE));
+	(void)await_state(PLAYER_STOPPED, 0);
+
+	/* Pedido substituído durante a carga: o player para quando acorda. */
+	host_libc_fault_on_read(steal_loader);
+	zassert_ok(cmd_post(CMD_SELECT, 2));
+	k_msleep(5);
+	zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
+	snap = settle();
+	zassert_equal(PLAYER_STOPPED, snap.state);
+	zassert_equal(2, snap.track);
+	zassert_ok(cmd_post(CMD_SELECT, 1));
+	(void)await_state(PLAYER_PLAYING, 1);
+	zassert_ok(cmd_post(CMD_STOP, TRACK_NONE));
+	(void)await_state(PLAYER_STOPPED, 1);
+	zassert_ok(playback_trace_end(clock_us()));
 }
 
 ZTEST(playback, test_player_csvs_e_transporte)
@@ -222,8 +459,7 @@ ZTEST(playback, test_player_csvs_e_transporte)
 	const size_t counts[] = {9, 5, 5};
 	struct playback_trace_entry entry;
 
-	cmd_flush();
-	zassert_ok(player_init(5));
+	start_player();
 	for (int track = 0; track < 3; track++) {
 		zassert_ok(playback_trace_begin(clock_us()));
 		zassert_ok(cmd_post(CMD_SELECT, track));
