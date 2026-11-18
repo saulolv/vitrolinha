@@ -412,8 +412,10 @@ só para as duas implementações.
 
 A UI precisa do tempo decorrido sem interrogar o `player` a cada quadro. A
 solução é um **registro instantâneo de escritor único**: `{estado, base_us,
-total_us, faixa}`, escrito só pelo lado do player e lido sem bloqueio pela `ui`,
-que calcula `decorrido = agora - base_us`.
+total_us, faixa, load_error, error_line}`, escrito só pelo lado do player e lido
+sem bloqueio pela `ui`, que calcula `decorrido = agora - base_us`. Os dois
+últimos dizem por que a carga da faixa falhou e em que linha — é deles que sai
+a tela de "Arquivo inválido"; voltam a zero a cada seleção.
 
 Isso emenda a regra antiga de "sem estado global compartilhado", que era
 incompatível com o próprio requisito da barra de progresso. A regra correta é:
@@ -477,9 +479,14 @@ tentativa no `prj.conf`.
 
 - Nenhuma chamada de sistema de arquivos, de I²C ou de LVGL na thread `player`
   nem no callback do timer.
-- No callback do timer, só `pwm_set_cycles`, `k_msgq_get` com `K_NO_WAIT`,
-  `k_timer_start` e escrita no instantâneo. Nada que durma, registre log ou
-  aloque.
+- No callback do timer, só o que roda em interrupção sem esperar: o ajuste de
+  tom (`pwm_set_cycles` na placa, o registro em RAM no simulador), `k_msgq_get`
+  com `K_NO_WAIT`, `k_timer_start`/`k_timer_stop`, o spinlock que serializa o
+  callback com a thread `player`, o `k_sem_give` com que `loader_next_event`
+  pede reposição da fila, e `snapshot_publish`, que é escrita sob seqlock.
+  Nenhuma delas dorme: o spinlock só mascara interrupções por algumas
+  instruções, o `k_sem_give` nunca bloqueia quem dá, e o seqlock não faz o
+  escritor esperar o leitor. Nada que durma, registre log ou aloque.
 - O redesenho da UI é limitado por taxa fixa e nunca dispara por nota.
 - Buffers de tamanho fixo: o uso de RAM não depende do tamanho do arquivo.
 - Escrever o parser RTTTL, não importar biblioteca pronta — é entregável do
