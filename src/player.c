@@ -108,6 +108,7 @@ static void select_track(int track)
 
 static void handle_command(const struct cmd *command)
 {
+	/* Sem default: cmd_post() recusa tipos desconhecidos na entrada. */
 	switch (command->kind) {
 	case CMD_SELECT:
 		if ((size_t)command->track < library_count) {
@@ -169,8 +170,6 @@ static void handle_command(const struct cmd *command)
 			select_track(state.track == TRACK_NONE ? 0 : state.track);
 		}
 		break;
-	default:
-		break;
 	}
 }
 
@@ -183,17 +182,17 @@ static void check_load(void)
 		return;
 	}
 	loading = false;
-	if (err != 0 || result.status != 0) {
+	/* Resultado pronto e sem erro sempre traz ao menos um evento na fila;
+	 * a terceira condição é defesa, e falha igual a uma carga recusada.
+	 */
+	if (err != 0 || result.status != 0 ||
+	    loader_next_event(request_id, &current) != 1) {
 		(void)loader_cancel(request_id);
 		request_id = 0;
 		stop_at(0);
 		return;
 	}
 	state.total_us = result.total_us;
-	if (loader_next_event(request_id, &current) != 1) {
-		stop_at(0);
-		return;
-	}
 	state.state = PLAYER_PLAYING;
 	state.base_us = now_us();
 	snapshot_publish(&state);
