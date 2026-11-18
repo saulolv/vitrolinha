@@ -14,6 +14,10 @@
  * Compila para os dois alvos: a ZBook P2 e o simulador. O que difere entre
  * eles é devicetree e configuração, não código — é o que torna possível
  * desenvolver a interface e o armazenamento sem a placa em mãos.
+ *
+ * No simulador o `main` também põe o player de pé, e a seleção na tela toca
+ * de verdade, para a captura em memória. Na placa o player ainda não existe:
+ * faltam a saída PWM e o parser RTTTL, e a tela só lista a biblioteca.
  */
 
 #include <vitrolinha/card.h>
@@ -29,6 +33,19 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+
+/*
+ * O player só entra no build onde há saída para ele: no simulador, a captura
+ * em memória do tone_trace. A condição é a mesma de src/CMakeLists.txt; sem
+ * ela, chamar player_init() não linkaria.
+ */
+#if defined(CONFIG_BOARD_NATIVE_SIM) && defined(CONFIG_EXTERNAL_LIBC) && defined(CONFIG_POLL)
+#define VITROLINHA_HAS_PLAYER 1
+#include <vitrolinha/loader.h>
+#include <vitrolinha/playback_trace.h>
+#include <vitrolinha/player.h>
+#include <vitrolinha/tone.h>
+#endif
 
 LOG_MODULE_REGISTER(vitrolinha, LOG_LEVEL_INF);
 
@@ -170,8 +187,11 @@ static int library_report(void)
  * @brief Exercita o contrato do @ref snapshot.h.
  *
  * Publica um instantâneo de faixa tocando e o relê pelo mesmo caminho que a
- * `ui` usará, para conferir que a conversão de decorrido e de progresso
- * está de pé antes de existir tela.
+ * `ui` usa, para conferir que a conversão de decorrido e de progresso está
+ * de pé. Depois devolve o repouso: a tela lê o mesmo registro, e sem isso
+ * mostraria uma faixa de mentira tocando no primeiro minuto.
+ *
+ * Chamar antes de @ref playback_start: depois dele o registro é do player.
  */
 static void snapshot_report(void)
 {
@@ -181,10 +201,12 @@ static void snapshot_report(void)
 		.total_us = 60U * USEC_PER_SEC,
 		.track = 0,
 	};
+	const struct player_snapshot idle = SNAPSHOT_IDLE_INITIALIZER;
 	struct player_snapshot copy;
 
 	snapshot_publish(&playing);
 	snapshot_read(&copy);
+	snapshot_publish(&idle);
 
 	LOG_INF("Instantaneo: faixa %d, %u us de %u us (%u/1000)", copy.track,
 		snapshot_elapsed_us(&copy, 30U * USEC_PER_SEC), copy.total_us,
@@ -220,8 +242,57 @@ static void cmd_report(void)
 		received.track);
 }
 
+#if defined(VITROLINHA_HAS_PLAYER)
+/**
+ * @brief Põe loader, saída e player de pé, na ordem que o player.h pede.
+ *
+ * A saída do simulador é a captura do @ref playback_trace.h, aberta aqui e
+ * nunca fechada: comporta PLAYBACK_TRACE_CAPACITY trocas de tom por sessão.
+ * Esgotada, o player recebe -ENOSPC da saída e para a faixa — o limite é da
+ * bancada, não do player.
+ *
+ * Falha aqui não derruba o `main`: a tela continua listando a biblioteca.
+ *
+ * @param track_count Faixas da varredura, ou erro negativo dela.
+ */
+static void playback_start(int track_count)
+{
+	size_t count = (track_count > 0) ? (size_t)track_count : 0U;
+	int err;
+
+	err = loader_init();
+	if (err != 0) {
+		LOG_ERR("Loader nao subiu: %d", err);
+		return;
+	}
+
+	err = tone_init();
+	if (err != 0) {
+		LOG_ERR("Saida de tom nao subiu: %d", err);
+		return;
+	}
+
+	/* O mesmo relógio que o tone_trace usa para cada registro. */
+	err = playback_trace_begin(k_cyc_to_us_floor64(k_cycle_get_64()));
+	if (err != 0) {
+		LOG_ERR("Captura nao abriu: %d", err);
+		return;
+	}
+
+	err = player_init(count);
+	if (err != 0) {
+		LOG_ERR("Player nao subiu: %d", err);
+		return;
+	}
+
+	LOG_INF("Player: %zu faixa(s), captura de ate %u trocas de tom", count,
+		PLAYBACK_TRACE_CAPACITY);
+}
+#endif
+
 int main(void)
 {
+	int track_count;
 	int err;
 
 	LOG_INF("Vitrolinha %s em " CONFIG_BOARD_TARGET, APP_VERSION_STRING);
@@ -232,6 +303,11 @@ int main(void)
 	}
 
 	card_report();
+	track_count = library_report();
+
+	/* Os dois exercitam registros que o player toma para si ao subir. */
+	snapshot_report();
+	cmd_report();
 
 	/* Depois do cartão: a lista da tela sai da varredura do volume montado. */
 	err = display_init();
@@ -239,9 +315,11 @@ int main(void)
 		return err;
 	}
 
-	(void)library_report();
-	snapshot_report();
-	cmd_report();
+#if defined(VITROLINHA_HAS_PLAYER)
+	playback_start(track_count);
+#else
+	ARG_UNUSED(track_count);
+#endif
 
 	LOG_INF("Bring-up completo. LED de sinal de vida piscando.");
 

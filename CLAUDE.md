@@ -398,7 +398,10 @@ A varredura (`src/storage.c`) lê só a raiz, só `.TXT`/`.RTX`/`.RTT`, **na ord
 do diretório** — é ela que dá sentido a "o 33.º arquivo é ignorado". Arquivo
 sem cabeçalho legível, vazio ou maior que 4 KB entra na lista como inválido,
 com o nome 8.3. No simulador, que não tem disco, o
-`CONFIG_VITROLINHA_STORAGE` põe a implementação de mentira no lugar.
+`CONFIG_VITROLINHA_STORAGE` põe outra implementação no lugar: a do aplicativo
+lê os CSVs de `fixtures/music` (`storage_host`), porque o loader por ora só
+entende CSV; os testes que não escolhem usam as faixas RTTTL embutidas
+(`storage_fake`).
 
 A carga (`storage_load`) lê o arquivo **inteiro** e confere o tamanho na
 entrada de diretório **antes** de ler: o arquivo maior que o buffer volta

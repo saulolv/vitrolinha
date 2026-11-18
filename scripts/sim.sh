@@ -27,6 +27,13 @@
 #
 # No Linux, basta executar build-out/zephyr-sim.elf direto.
 #
+# Rode da raiz do repositório: a biblioteca do simulador são os CSVs de
+# fixtures/music, procurados relativamente ao diretório de execução. De outro
+# lugar, aponte VITROLINHA_MUSIC_DIR para a pasta.
+#
+# Não há som. O que o player toca fica numa captura em memória de até 2048
+# trocas de tom; esgotada, a próxima faixa para com falha de saída.
+#
 # ----------------------------------------------------------------------------
 # O que o simulador NÃO faz
 #
@@ -63,7 +70,7 @@ if [ "${run}" -eq 1 ]; then
 	cmd="${cmd}
 echo '==> Rodando. Ctrl+C encerra.'
 echo
-'${BUILD_DIR}/zephyr/zephyr.exe'"
+VITROLINHA_MUSIC_DIR='${CONTAINER_REPO}/fixtures/music' '${BUILD_DIR}/zephyr/zephyr.exe'"
 fi
 
 vitrolinha_docker_run bash -euc "${cmd}"
