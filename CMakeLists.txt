@@ -54,6 +54,16 @@ if(vitrolinha_board_hint
     "build, e o native_sim de 32 bits exigiria a SDL em i386.")
 endif()
 
+# ----------------------------------------------------------------------------
+# O app.overlay vale para os dois alvos.
+#
+# Sem esta linha ele nunca seria lido: quando existe boards/<alvo>.overlay, o
+# build usa a sobreposição da placa OU o app.overlay, nunca os dois — e os
+# dois alvos têm a sua. O que é comum aos dois, como a ponte entre o
+# subsistema `input` e o encoder do LVGL, sumiria sem erro nenhum.
+# ----------------------------------------------------------------------------
+list(APPEND EXTRA_DTC_OVERLAY_FILE ${CMAKE_CURRENT_SOURCE_DIR}/app.overlay)
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 # A versão não fica aqui: o Zephyr a lê do arquivo VERSION na raiz e gera

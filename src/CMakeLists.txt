@@ -28,6 +28,12 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/parser_csv.c
 )
 
+# A interface. Condicional porque depende do LVGL, que só a aplicação liga: na
+# lista comum, cada suíte de teste tentaria compilá-la sem os cabeçalhos dele.
+target_sources_ifdef(CONFIG_LVGL app PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}/display.c
+)
+
 # A saída implementada nesta etapa é a captura no computador. O player
 # entra junto dela; a placa ainda precisa de uma implementação tone_pwm.
 #
