@@ -117,7 +117,9 @@ São hipóteses de leitura do código, não medições:
    primeira montagem do cartão (`card_init` chama `card_refresh` antes de
    criar o monitor), que atravessa o FatFs e a pilha SD — o mesmo caminho para
    o qual o monitor do cartão reservou 2048 B. Se alguma pilha sair apertada,
-   a aposta é esta.
+   a aposta é esta. Com a tela (PR #41), o `main` passou a montar também a
+   interface e a varrer a biblioteca duas vezes, e o `prj.conf` o subiu para
+   4096 B — teto provisório, à espera da medição.
 2. **`input` na prioridade 14.** Sem `CONFIG_INPUT_THREAD_PRIORITY_OVERRIDE`,
    a thread do subsistema `input` fica na menor prioridade de aplicação —
    abaixo do `card` (12) e do LVGL (10). Não é assunto de pilha, mas a tabela
