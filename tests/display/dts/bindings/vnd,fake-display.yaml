@@ -1,0 +1,7 @@
+description: |
+  Display de teste: monocromático, aceita qualquer escrita e devolve em
+  display_blanking_off() o valor que o teste mandar.
+
+compatible: "vnd,fake-display"
+
+include: display-controller.yaml

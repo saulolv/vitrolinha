@@ -1,0 +1,6 @@
+# Este teste escolhe a origem da biblioteca: a pasta do computador é a única
+# implementação em que dá para provocar biblioteca vazia, ausente e cheia.
+
+rsource "../../Kconfig.vitrolinha"
+
+source "Kconfig.zephyr"

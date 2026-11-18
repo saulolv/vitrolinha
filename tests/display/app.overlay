@@ -1,0 +1,41 @@
+/*
+ * O display e o dispositivo de entrada da interface, trocados por versões
+ * que o teste controla.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/lvgl/lvgl.h>
+
+&sdl_dc {
+	status = "disabled";
+};
+
+&input_sdl_touch {
+	status = "disabled";
+};
+
+/ {
+	chosen {
+		zephyr,display = &test_display;
+	};
+
+	/* O tamanho do OLED. Nasce sem inicializar: ver prj.conf. */
+	test_display: test_display {
+		compatible = "vnd,fake-display";
+		width = <128>;
+		height = <64>;
+		zephyr,deferred-init;
+	};
+
+	/*
+	 * O mesmo keypad do simulador, mas sem a propriedade `input`: assim
+	 * aceita os eventos que o teste publica sem dispositivo de origem.
+	 */
+	lvgl_keypad: lvgl_keypad {
+		compatible = "zephyr,lvgl-keypad-input";
+		input-codes = <INPUT_KEY_LEFT INPUT_KEY_RIGHT INPUT_KEY_ENTER>;
+		lvgl-codes = <LV_KEY_LEFT LV_KEY_RIGHT LV_KEY_ENTER>;
+	};
+};
