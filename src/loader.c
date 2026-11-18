@@ -48,9 +48,8 @@ static bool finished;
 /** @brief Invalida a fila antiga; chamado com lock adquirido. */
 static uint32_t new_generation(void)
 {
-	if (++generation == 0) {
-		generation++;
-	}
+	/* Percorre 1..UINT32_MAX e volta a 1: zero é reservado para "nenhuma". */
+	generation = (generation % UINT32_MAX) + 1U;
 	active_id = generation;
 	ready = false;
 	finished = false;
@@ -132,17 +131,18 @@ static void loader_worker(void *a, void *b, void *c)
 			struct playback_event event;
 			int status = parser_csv_next(&parser, &event);
 
+			/* Só a geração corrente escreve na fila; uma substituída sai
+			 * pelo teste do topo do laço. O init validou o arquivo
+			 * inteiro, então daqui só sai evento: qualquer outra resposta
+			 * encerra a fila sem o silêncio final, e o player trata a
+			 * fila vazia antes dele como falha.
+			 */
 			key = k_spin_lock(&lock);
-			if (id != active_id) {
-				k_spin_unlock(&lock, key);
-				break;
-			}
-			if (status == 1) {
-				(void)k_msgq_put(&events, &event, K_NO_WAIT);
-				finished = parser.final_event_emitted;
-			} else {
-				result.status = status < 0 ? status : -EIO;
-				mark_ready();
+			if (id == active_id) {
+				if (status == 1) {
+					(void)k_msgq_put(&events, &event, K_NO_WAIT);
+				}
+				finished = status != 1 || parser.final_event_emitted;
 			}
 			k_spin_unlock(&lock, key);
 		}
