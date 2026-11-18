@@ -100,10 +100,13 @@ o que o linker reservou de fato. Total: **16 704 B** de pilha, 3,1% da SRAM.
 | `input` | 14 | 1024 | `CONFIG_INPUT_THREAD_STACK_SIZE` | Os callbacks do subsistema `input`, incluindo o do encoder do LVGL |
 | `idle` | 15 | 320 | `CONFIG_IDLE_STACK_SIZE` | Nada; só recebe quadro de exceção |
 
-As threads `player`, `ui` e `loader` ainda não existem neste commit. Quando
-nascerem, entram na tabela sozinhas — o script lê o que o console mostrar —,
-mas o `KNOBS` de `scripts/stack_report.py` precisa ganhar a linha de cada
-uma, senão a coluna "Onde se ajusta" sai com `?`. **A tabela final só vale
+As threads `player_thread` (prioridade 4, 2048 B) e `loader_thread`
+(prioridade 8, 4096 B) já existem, mas **só no simulador**: na placa falta a
+saída PWM, e sem ela nenhuma das duas entra no build. O `KNOBS` de
+`scripts/stack_report.py` já tem as linhas delas, para a tabela sair certa no
+dia em que entrarem. A `ui` ainda não existe; quando nascer, entra na tabela
+sozinha — o script lê o que o console mostrar —, mas precisa da sua linha no
+`KNOBS`, senão a coluna "Onde se ajusta" sai com `?`. **A tabela final só vale
 medida sobre o firmware da E6**, com a arquitetura inteira de pé.
 
 ### O que olhar primeiro

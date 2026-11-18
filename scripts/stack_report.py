@@ -71,6 +71,11 @@ KNOBS = {
     "lvgl": "`CONFIG_LV_Z_LVGL_WORKQUEUE_STACK_SIZE`",
     "thread_analyzer": "`CONFIG_THREAD_ANALYZER_AUTO_STACK_SIZE`",
     "card": "`CARD_MONITOR_STACK_SIZE` (`src/card.c`)",
+    # O nome é o do K_THREAD_DEFINE. Hoje só existem no simulador, onde não
+    # há analisador; entram aqui para a placa já sair certa quando ganharem
+    # a saída PWM.
+    "loader_thread": "`LOADER_STACK_SIZE` (`src/loader.c`)",
+    "player_thread": "`PLAYER_STACK_SIZE` (`src/player.c`)",
 }
 
 # ---------------------------------------------------------------------------
