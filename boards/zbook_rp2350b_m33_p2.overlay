@@ -80,11 +80,18 @@
 	debounce-interval-ms = <20>;
 };
 
+/*
+ * Ponte entre o subsistema `input` e o indev de encoder do LVGL.
+ *
+ * Repete a do app.overlay porque, com este arquivo presente, o app.overlay
+ * não é aplicado: o build usa a sobreposição da placa OU a da aplicação,
+ * nunca as duas. O rótulo é o mesmo, e é por ele que src/display.c acha o
+ * indev para amarrar o grupo de foco.
+ */
 / {
-    lvgl_encoder: lvgl-encoder-input {
-        compatible = "zephyr,lvgl-encoder-input";
-        /* input = <&encoder_qdec>; */
-        rotation-input-code = <INPUT_REL_WHEEL>;
-        button-input-code = <INPUT_KEY_ENTER>;
-    };
+	lvgl_encoder_input: lvgl_encoder_input {
+		compatible = "zephyr,lvgl-encoder-input";
+		rotation-input-code = <INPUT_REL_WHEEL>;
+		button-input-code = <INPUT_KEY_ENTER>;
+	};
 };

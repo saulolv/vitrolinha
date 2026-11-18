@@ -26,12 +26,9 @@
 #include <app_version.h>
 
 #include <zephyr/devicetree.h>
-#include <zephyr/drivers/display.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-
-#define CONFIG_BOARD_ZBOOK
 
 LOG_MODULE_REGISTER(vitrolinha, LOG_LEVEL_INF);
 
@@ -234,12 +231,14 @@ int main(void)
 		return err;
 	}
 
+	card_report();
+
+	/* Depois do cartão: a lista da tela sai da varredura do volume montado. */
 	err = display_init();
 	if (err != 0) {
 		return err;
 	}
 
-	card_report();
 	(void)library_report();
 	snapshot_report();
 	cmd_report();

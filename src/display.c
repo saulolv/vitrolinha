@@ -1,50 +1,57 @@
-#include "stdlib/lv_string.h"
+/**
+ * @file display.c
+ * @brief Interface no OLED: biblioteca no roller, faixa e progresso abaixo.
+ *
+ * A lista sai de @ref storage_scan e a barra, de @ref snapshot_read. Nada aqui
+ * sabe quem responde ao @ref storage.h — cartão na placa, faixas embutidas ou
+ * pasta do computador no simulador — nem se há um player de verdade do outro
+ * lado do instantâneo.
+ */
 
-#include "vitrolinha/display.h"
-#include "vitrolinha/storage.h"
-#include "vitrolinha/storage_fake.h"
-#include "vitrolinha/track.h"
+#include <vitrolinha/cmd.h>
+#include <vitrolinha/display.h>
+#include <vitrolinha/snapshot.h>
+#include <vitrolinha/storage.h>
+#include <vitrolinha/track.h>
+
+#include <lvgl.h>
+#include <lvgl_input_device.h>
+#include <lvgl_zephyr.h>
+
+#include <string.h>
 
 #include <zephyr/device.h>
 #include <zephyr/drivers/display.h>
-#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
 
 /* -------------------------------------------------------------------------- */
 /* Encoder                                                                    */
 /* -------------------------------------------------------------------------- */
 
 /**
- * @brief Nó do Devicetree associado ao dispositivo de entrada.
+ * @brief Nó do Devicetree do dispositivo de entrada que dirige o grupo.
  *
- * A implementação selecionada depende da placa utilizada:
- * - native_sim: dispositivo de entrada LVGL configurado como keypad;
- * - ZBOOK: dispositivo de entrada LVGL configurado como encoder.
+ * Escolhido pelo que o devicetree declara, não pelo nome da placa:
+ * - no simulador, o overlay declara um keypad que entrega as setas e o Enter
+ *   do teclado do computador;
+ * - na placa, o `lvgl_encoder_input` do overlay da placa, que recebe o
+ *   `INPUT_REL_WHEEL` do gpio-qdec e o clique do encoder.
  */
-#if defined(CONFIG_BOARD_NATIVE_SIM)
-
-#define ENCODER_NODE DT_NODELABEL(lvgl_keypad)
-
-#elif defined(CONFIG_BOARD_ZBOOK)
-
-#define ENCODER_NODE DT_NODELABEL(lvgl_encoder)
-
+#if DT_NODE_EXISTS(DT_NODELABEL(lvgl_keypad))
+#define INPUT_NODE DT_NODELABEL(lvgl_keypad)
 #else
-#error "Placa sem implementacao de encoder definida"
+#define INPUT_NODE DT_NODELABEL(lvgl_encoder_input)
 #endif
 
-/** Dispositivo de entrada associado ao encoder. */
-static const struct device *const encoder_dev = DEVICE_DT_GET(ENCODER_NODE);
+/** Dispositivo de entrada associado ao grupo de foco. */
+static const struct device *const input_dev = DEVICE_DT_GET(INPUT_NODE);
 
 /* -------------------------------------------------------------------------- */
 /* Configuração                                                               */
 /* -------------------------------------------------------------------------- */
-
-LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
-
-/** Tamanho dos buffers temporários utilizados para armazenar textos. */
-#define BUFFER_SIZE 64
 
 /**
  * @brief Habilita o teste de desempenho do display.
@@ -53,6 +60,17 @@ LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
  * demonstração que invalida periodicamente a tela inteira.
  */
 /* #define TEST_FPS */
+
+/** Escala da barra: a mesma de @ref snapshot_progress_permille. */
+#define BAR_MAX 1000
+
+/**
+ * @brief Tamanho das opções do roller.
+ *
+ * Cada faixa ocupa no máximo o marcador `!`, o nome (até TRACK_NAME_MAX - 1
+ * bytes) e o `\n`, ou seja, TRACK_NAME_MAX + 1. Mais o terminador.
+ */
+#define ROLLER_OPTIONS_SIZE (LIBRARY_MAX * (TRACK_NAME_MAX + 1U) + 1U)
 
 /* -------------------------------------------------------------------------- */
 /* Estado global                                                              */
@@ -66,29 +84,36 @@ LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
 static const struct device *const display_dev =
     DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
 
-/**
- * @brief Dados compartilhados pelos callbacks da interface.
- *
- * Armazena os objetos LVGL necessários para atualizar o nome da música
- * e a barra de progresso.
- */
-typedef struct {
-    /** Rótulo utilizado para apresentar o nome da música. */
-    lv_obj_t *label;
+#ifndef TEST_FPS
 
-    /** Barra utilizada para representar o progresso da reprodução. */
-    lv_obj_t *bar;
-} cb_data;
+/** Biblioteca, na ordem de @ref storage_scan. Tamanho fixo: 32 faixas. */
+static struct track_meta library[LIBRARY_MAX];
 
-/** Indica se um evento de clique foi recebido. */
-static bool clicked = false;
+/** Quantas posições de @ref library valem. Zero se a varredura falhou. */
+static size_t library_count;
 
-/** Timer responsável pela animação da barra de progresso. */
-static lv_timer_t *bar_timer;
+/** Erro da varredura, ou 0. Decide o texto do roller quando ele fica vazio. */
+static int library_error;
+
+/** Rótulo com o nome da faixa do instantâneo. */
+static lv_obj_t *music_label;
+
+/** Barra de progresso, de 0 a ::BAR_MAX. */
+static lv_obj_t *bar;
+
+/** Faixa mostrada no rótulo, para só reescrevê-lo quando ela mudar. */
+static int16_t shown_track = TRACK_NONE;
+
+static void screen_init(void);
+static void app(void);
+
+#endif /* !TEST_FPS */
 
 /* -------------------------------------------------------------------------- */
 /* Medição de desempenho                                                      */
 /* -------------------------------------------------------------------------- */
+
+#ifdef TEST_FPS
 
 /**
  * @brief Rótulo utilizado para apresentar o contador de quadros.
@@ -167,24 +192,162 @@ static void display_demo_timer_cb(lv_timer_t *timer) {
     lv_obj_invalidate(lv_screen_active());
 }
 
+#endif /* TEST_FPS */
+
+/* -------------------------------------------------------------------------- */
+/* Biblioteca                                                                 */
+/* -------------------------------------------------------------------------- */
+
+#ifndef TEST_FPS
+
+/**
+ * @brief Varre a biblioteca pelo contrato do @ref storage.h.
+ *
+ * Fora do lock do LVGL: na placa a varredura lê o cartão, e o laço do LVGL
+ * não tem por que esperar por ela.
+ */
+static void library_load(void) {
+    size_t skipped = 0;
+    int count = storage_scan(library, ARRAY_SIZE(library), &skipped);
+
+    if (count < 0) {
+        LOG_WRN("Biblioteca indisponivel: %s (%d)", storage_error_text(count),
+                count);
+        library_count = 0;
+        library_error = count;
+        return;
+    }
+
+    library_count = (size_t)count;
+    library_error = 0;
+
+    if (skipped > 0U) {
+        LOG_WRN("Biblioteca cheia: %zu arquivo(s) ignorado(s)", skipped);
+    }
+}
+
+/**
+ * @brief Monta as opções do roller, uma faixa por linha.
+ *
+ * Faixa que o interpretador rejeitou leva `!` na frente. Biblioteca vazia
+ * vira uma única linha explicando o porquê.
+ *
+ * @param out Destino de ::ROLLER_OPTIONS_SIZE bytes.
+ */
+static void library_options(char *out) {
+    size_t used = 0;
+
+    out[0] = '\0';
+
+    if (library_count == 0U) {
+        const char *why = (library_error != 0)
+                              ? storage_error_text(library_error)
+                              : "Biblioteca vazia";
+
+        strncpy(out, why, ROLLER_OPTIONS_SIZE - 1U);
+        out[ROLLER_OPTIONS_SIZE - 1U] = '\0';
+        return;
+    }
+
+    for (size_t i = 0; i < library_count; i++) {
+        /* track_meta_init garante o terminador dentro de TRACK_NAME_MAX. */
+        size_t len = strlen(library[i].name);
+
+        if (i > 0U) {
+            out[used++] = '\n';
+        }
+
+        if (!library[i].valid) {
+            out[used++] = '!';
+        }
+
+        memcpy(&out[used], library[i].name, len);
+        used += len;
+    }
+
+    out[used] = '\0';
+}
+
+/* -------------------------------------------------------------------------- */
+/* Faixa e progresso                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @brief Copia o instantâneo do player para o rótulo e a barra.
+ *
+ * Roda a taxa fixa, pelo timer do LVGL — com o lock do LVGL já adquirido —,
+ * e nunca é acordada pelo player. O rótulo só é reescrito quando a faixa
+ * muda; a barra o LVGL já ignora quando o valor é o mesmo.
+ *
+ * @param timer Timer do LVGL que disparou o callback.
+ */
+static void refresh_timer_cb(lv_timer_t *timer) {
+    ARG_UNUSED(timer);
+
+    struct player_snapshot snap;
+    uint64_t now_us = k_ticks_to_us_floor64(k_uptime_ticks());
+
+    snapshot_read(&snap);
+
+    lv_bar_set_value(bar, snapshot_progress_permille(&snap, now_us),
+                     LV_ANIM_OFF);
+
+    if (snap.track == shown_track) {
+        return;
+    }
+
+    shown_track = snap.track;
+
+    if ((snap.track >= 0) && ((size_t)snap.track < library_count)) {
+        lv_label_set_text(music_label, library[snap.track].name);
+    } else {
+        lv_label_set_text(music_label, "Nada tocando");
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Eventos de interação                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @brief Clique no roller: toca a faixa selecionada.
+ *
+ * Não muda nada na tela. Publica ::CMD_SELECT, e o que aparece no rótulo e
+ * na barra é o que o player publicar no instantâneo em resposta — a tela
+ * mostra o que está tocando, não o que foi pedido.
+ *
+ * Reabre o modo de edição do grupo: com o encoder, o clique o encerra, e sem
+ * ele o giro passaria a mover o foco em vez da seleção do roller.
+ *
+ * @param e Evento de clique recebido do LVGL.
+ */
+static void roller_clicked_cb(lv_event_t *e) {
+    lv_obj_t *roller = lv_event_get_target_obj(e);
+    lv_group_t *g = lv_obj_get_group(roller);
+    uint32_t selected = lv_roller_get_selected(roller);
+    int err;
+
+    if (g != NULL) {
+        lv_group_set_editing(g, true);
+    }
+
+    if (selected >= library_count) {
+        return;
+    }
+
+    err = cmd_post(CMD_SELECT, (int16_t)library[selected].index);
+    if (err != 0) {
+        LOG_WRN("Selecao da faixa %u descartada: %d", library[selected].index,
+                err);
+    }
+}
+
+#endif /* !TEST_FPS */
+
 /* -------------------------------------------------------------------------- */
 /* Inicialização do display                                                  */
 /* -------------------------------------------------------------------------- */
 
-/**
- * @brief Inicializa a interface e habilita o display.
- *
- * Verifica a disponibilidade do dispositivo, inicializa os componentes
- * da interface e solicita a desativação do blanking do display.
- *
- * Quando `TEST_FPS` está definido, inicializa a tela de demonstração e
- * os mecanismos de medição de desempenho. Caso contrário, inicializa
- * a interface principal da aplicação.
- *
- * @retval 0        Inicialização concluída.
- * @retval -ENODEV  Dispositivo de display não está pronto.
- * @retval outro    Erro retornado por `display_blanking_off()`.
- */
 int display_init(void) {
     int err = 0;
 
@@ -193,6 +356,10 @@ int display_init(void) {
         err = -ENODEV;
         goto END;
     }
+
+#ifndef TEST_FPS
+    library_load();
+#endif
 
     /*
      * A função pode ser executada em uma thread concorrente com a thread
@@ -206,7 +373,7 @@ int display_init(void) {
 #ifdef TEST_FPS
 
     /* Cria o título da tela de demonstração. */
-    title = lv_label_create(lv_screen_active());
+    lv_obj_t *title = lv_label_create(lv_screen_active());
     lv_label_set_text(title, "Vitrola");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
 
@@ -246,167 +413,14 @@ int display_init(void) {
         goto END;
     }
 
+    err = 0;
     LOG_INF("Display no ar (%s)", display_dev->name);
 
 END:
     return err;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Barra de progresso                                                         */
-/* -------------------------------------------------------------------------- */
-
-/**
- * @brief Reinicia a animação da barra de progresso.
- *
- * Reinicia e pausa o timer responsável pela animação e redefine o valor
- * da barra de progresso para zero.
- *
- * @param bar Objeto LVGL correspondente à barra de progresso.
- */
-static void reset_bar_timer(lv_obj_t *bar) {
-    lv_timer_reset(bar_timer);
-    lv_timer_pause(bar_timer);
-    lv_bar_set_value(bar, 0, false);
-}
-
-/**
- * @brief Atualiza o valor da barra de progresso.
- *
- * Incrementa o valor atual em cinco unidades. Quando o próximo incremento
- * ultrapassaria o limite de 100, reinicia e pausa a animação.
- *
- * @param timer Timer do LVGL responsável pela animação.
- */
-static void bar_timer_cb(lv_timer_t *timer) {
-    lv_obj_t *bar = lv_timer_get_user_data(timer);
-    int32_t current_value = lv_bar_get_value(bar);
-
-    if (current_value + 5 > 100) {
-        reset_bar_timer(bar);
-        return;
-    }
-
-    lv_bar_set_value(bar, current_value + 5, true);
-}
-
-/* -------------------------------------------------------------------------- */
-/* Eventos do roller                                                          */
-/* -------------------------------------------------------------------------- */
-
-/**
- * @brief Processa a entrada de uma tecla no roller.
- *
- * Obtém a opção selecionada, atualiza o rótulo da música e controla o
- * timer responsável pela animação da barra de progresso.
- *
- * O processamento da seleção ocorre somente quando a variável `clicked`
- * está definida. Essa variável é atualizada pelo callback `clicked_cb`.
- *
- * @param e Evento de entrada recebido do LVGL.
- */
-static void event_cb(lv_event_t *e) {
-    cb_data *local_data = lv_event_get_user_data(e);
-
-    lv_obj_t *music_label = local_data->label;
-    lv_obj_t *bar =
-        local_data->bar; /* TODO: refletir o estado real da música. */
-
-    lv_obj_t *roller = lv_event_get_target_obj(e);
-    lv_indev_t *indev = lv_indev_get_act();
-
-    char buf[BUFFER_SIZE];
-    char playing_music[BUFFER_SIZE];
-
-    const char *text_ref = lv_label_get_text(music_label);
-
-    /* Preserva o nome da música antes de atualizar o rótulo. */
-    lv_strlcpy(playing_music, text_ref, BUFFER_SIZE);
-
-    LOG_INF("Key entered: %d", lv_indev_get_key(indev));
-
-    if (clicked) {
-        clicked = false;
-
-        /* Obtém o texto da opção atualmente selecionada. */
-        lv_roller_get_selected_str(roller, buf, sizeof(buf));
-
-        LOG_INF("Buffer: %s\n", buf);
-
-        /* Atualiza o rótulo com o nome da nova seleção. */
-        lv_label_set_text_fmt(music_label, "%s", buf);
-
-        LOG_INF("Buffer after: %s\n", playing_music);
-
-        /*
-         * Cria o timer na primeira seleção.
-         * O retorno evita executar as operações seguintes nessa chamada.
-         */
-        if (!bar_timer) {
-            bar_timer = lv_timer_create(bar_timer_cb, 500, bar);
-            return;
-        }
-
-        /* Reinicia o progresso quando a seleção é alterada. */
-        if (lv_strcmp(playing_music, buf)) {
-            reset_bar_timer(bar);
-        }
-
-        /* Alterna o estado de execução do timer. */
-        if (lv_timer_get_paused(bar_timer)) {
-            lv_timer_resume(bar_timer);
-        } else {
-            lv_timer_pause(bar_timer);
-        }
-    }
-}
-
-/* -------------------------------------------------------------------------- */
-/* Armazenamento de faixas                                                    */
-/* -------------------------------------------------------------------------- */
-
-/**
- * @brief Obtém os nomes e conteúdos das faixas disponíveis.
- *
- * Percorre as faixas do armazenamento de teste, carrega seus conteúdos
- * e concatena os respectivos nomes em uma string, separados por quebras
- * de linha.
- *
- * A implementação utiliza o armazenamento falso e deverá ser adaptada
- * quando o suporte ao armazenamento real for implementado.
- *
- * @param name    Buffer que receberá os nomes das faixas.
- * @param content Vetor de ponteiros para os buffers de conteúdo.
- *
- * @retval 0                      Operação concluída.
- * @retval K_ERR_STACK_CHK_FAIL   Arquivo maior que o limite permitido.
- *
- * @warning Os elementos de `content` devem apontar para buffers válidos
- *          com capacidade de pelo menos `STORAGE_FILE_MAX` bytes.
- */
-static int get_name_content(char *name, uint8_t **content) {
-    struct track_meta trackMeta;
-
-    for (size_t i = 0; i < STORAGE_FAKE_TRACK_COUNT; i++) {
-        int file_size = storage_load(i, content[i], STORAGE_FILE_MAX);
-
-        if (file_size > (int)STORAGE_FILE_MAX) {
-            return K_ERR_STACK_CHK_FAIL;
-        }
-
-        fake_storage_get_name(&trackMeta, (uint8_t)i);
-
-        /* Concatena o nome da faixa e uma quebra de linha. */
-        lv_strcat(name, trackMeta.name);
-        lv_strcat(name, "\n");
-    }
-
-    /* Remove a última quebra de linha da lista de nomes. */
-    name[lv_strnlen(name, 35) - 1] =
-        '\0'; /* TODO: adaptar ao carregamento das faixas reais. */
-
-    return 0;
-}
+#ifndef TEST_FPS
 
 /* -------------------------------------------------------------------------- */
 /* Construção dos componentes da interface                                    */
@@ -463,32 +477,6 @@ static void screen_init(void) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Eventos de interação                                                       */
-/* -------------------------------------------------------------------------- */
-
-/**
- * @brief Processa o evento de clique no roller.
- *
- * Habilita o modo de edição do grupo associado ao objeto, quando existir,
- * e sinaliza que um clique foi recebido.
- *
- * A variável `clicked` é utilizada posteriormente por `event_cb` para
- * determinar se a entrada de tecla deve atualizar a música selecionada.
- *
- * @param e Evento de clique recebido do LVGL.
- */
-static void clicked_cb(lv_event_t *e) {
-    lv_obj_t *obj = lv_event_get_target_obj(e);
-    lv_group_t *g = lv_obj_get_group(obj);
-
-    if (g != NULL) {
-        lv_group_set_editing(g, true);
-    }
-
-    clicked = true;
-}
-
-/* -------------------------------------------------------------------------- */
 /* Aplicação principal                                                        */
 /* -------------------------------------------------------------------------- */
 
@@ -498,22 +486,12 @@ static void clicked_cb(lv_event_t *e) {
  * Cria e configura os estilos, o roller de seleção de músicas, o grupo
  * de entrada, o rótulo da música e a barra de progresso.
  *
- * Os estilos e os dados associados aos callbacks possuem duração estática,
- * permitindo que o LVGL mantenha referências a esses objetos durante a
- * execução da interface.
+ * Os estilos e as opções do roller possuem duração estática, permitindo que
+ * o LVGL mantenha referências a esses objetos durante a execução da
+ * interface.
  *
- * @note A implementação atual utiliza o armazenamento falso para carregar
- *       os nomes das faixas.
- *
- * @todo Adaptar o carregamento das faixas para utilizar o cartão de memória.
- *       Algumas operações poderão precisar ser executadas pelo loop principal.
- *
- * @todo Corrigir o problema em que a animação de rolagem pode parar quando
- *       músicas são selecionadas em uma frequência elevada.
- *
- *       Uma possível solução é utilizar uma fila de eventos ou introduzir
- *       um intervalo entre seleções, dependendo da implementação do
- *       decodificador de MP3 para PCM.
+ * @todo Revarrer a biblioteca quando o cartão entrar ou sair (issues #29 e
+ *       #30). Hoje a lista é a do boot.
  */
 static void app(void) {
     /* Estilos utilizados pelos componentes da interface. */
@@ -522,16 +500,12 @@ static void app(void) {
     static lv_style_t style_bar;
     static lv_style_t style_container;
 
-    /* Buffer estático utilizado para armazenar os nomes das faixas. */
-    static char names[1000];
+    /* Nomes das faixas, um por linha. Tamanho fixo, como a biblioteca. */
+    static char options[ROLLER_OPTIONS_SIZE];
 
     static bool inited = false;
 
-    uint8_t *content[STORAGE_FILE_MAX];
-
-    if (get_name_content(names, content)) {
-        LOG_ERR("File too large");
-    }
+    library_options(options);
 
     if (!inited) {
         /* Estilo principal do roller. */
@@ -570,10 +544,8 @@ static void app(void) {
     lv_obj_set_height(roller, LV_VER_RES * 0.55);
 
     lv_roller_set_visible_row_count(roller, 2);
-    lv_roller_set_options(roller, names, LV_ROLLER_MODE_NORMAL);
-
-    /* Define a terceira opção como seleção inicial. */
-    lv_roller_set_selected(roller, 2, false);
+    lv_roller_set_options(roller, options, LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_selected(roller, 0, LV_ANIM_OFF);
 
     lv_obj_add_style(roller, &style_roller_main, LV_PART_MAIN);
     lv_obj_add_style(roller, &style_roller_selected, LV_PART_SELECTED);
@@ -586,11 +558,11 @@ static void app(void) {
 
     lv_obj_add_style(container, &style_container, LV_PART_MAIN);
 
-    /* Rótulo que apresenta o nome da música atualmente selecionada. */
-    lv_obj_t *music_label = lv_label_create(container);
+    /* Rótulo que apresenta o nome da faixa do instantâneo. */
+    music_label = lv_label_create(container);
 
     lv_obj_set_style_text_font(music_label, &lv_font_unscii_8, 0);
-    lv_label_set_text(music_label, "Nothing Playing");
+    lv_label_set_text(music_label, "Nada tocando");
 
     /* ---------------------------------------------------------------------- */
     /* Grupo de entrada                                                       */
@@ -602,7 +574,7 @@ static void app(void) {
      */
     lv_group_t *group = lv_group_create();
 
-    lv_indev_set_group(lvgl_input_get_indev(encoder_dev), group);
+    lv_indev_set_group(lvgl_input_get_indev(input_dev), group);
 
     lv_group_add_obj(group, roller);
     lv_group_focus_obj(roller);
@@ -613,12 +585,11 @@ static void app(void) {
     /* Barra de progresso                                                     */
     /* ---------------------------------------------------------------------- */
 
-    lv_obj_t *bar = lv_bar_create(container);
+    bar = lv_bar_create(container);
 
     lv_obj_set_size(bar, lv_pct(90), 8);
 
-    lv_bar_set_min_value(bar, 0);
-    lv_bar_set_max_value(bar, 100);
+    lv_bar_set_range(bar, 0, BAR_MAX);
 
     lv_obj_add_style(bar, &style_bar, LV_PART_MAIN);
 
@@ -626,16 +597,9 @@ static void app(void) {
     /* Registro dos callbacks                                                 */
     /* ---------------------------------------------------------------------- */
 
-    /*
-     * Estrutura estática para armazenar os objetos utilizados por event_cb.
-     * Sua duração deve ser igual ou superior à dos callbacks registrados.
-     */
-    static cb_data global_data;
+    lv_obj_add_event_cb(roller, roller_clicked_cb, LV_EVENT_CLICKED, NULL);
 
-    global_data.label = music_label;
-    global_data.bar = bar;
-
-    lv_obj_add_event_cb(roller, event_cb, LV_EVENT_KEY, &global_data);
-
-    lv_obj_add_event_cb(roller, clicked_cb, LV_EVENT_CLICKED, NULL);
+    lv_timer_create(refresh_timer_cb, DISPLAY_REFRESH_PERIOD_MS, NULL);
 }
+
+#endif /* !TEST_FPS */

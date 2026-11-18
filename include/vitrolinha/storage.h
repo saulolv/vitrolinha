@@ -41,7 +41,7 @@ extern "C" {
  * Arquivo maior é **rejeitado**, não truncado: meia melodia sem aviso é pior
  * do que uma mensagem de erro.
  */
-#define STORAGE_FILE_MAX 32U
+#define STORAGE_FILE_MAX 4096U
 
 /**
  * @brief Varre a biblioteca e preenche os metadados das faixas encontradas.

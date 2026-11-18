@@ -77,7 +77,7 @@ size_t track_name_copy(char *dst, size_t dst_size, const char *src, size_t src_l
 	return copied;
 }
 
-void track_meta_init(struct track_meta *meta, size_t index, const char *name,
+void track_meta_init(struct track_meta *meta, uint8_t index, const char *name,
 		     size_t name_len, bool valid)
 {
 	if (meta == NULL) {

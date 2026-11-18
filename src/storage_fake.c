@@ -13,7 +13,6 @@
  * binário — é o que a fronteira do @ref storage.h compra.
  */
 
-#include <stdint.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/storage_fake.h>
 #include <vitrolinha/track.h>
@@ -134,12 +133,6 @@ int storage_scan(struct track_meta *out, size_t max, size_t *skipped)
 	}
 
 	return (int)count;
-}
-
-void fake_storage_get_name(struct track_meta *meta, uint8_t index)
-{
-	track_meta_init(meta, (uint8_t)index, fake_tracks[index].name,
-			strlen(fake_tracks[index].name), true);
 }
 
 int storage_load(int track, uint8_t *buf, size_t len)
