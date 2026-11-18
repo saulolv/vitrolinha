@@ -37,7 +37,7 @@ LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
  * Escolhido pelo que o devicetree declara, não pelo nome da placa:
  * - no simulador, o overlay declara um keypad que entrega as setas e o Enter
  *   do teclado do computador;
- * - na placa, o `lvgl_encoder_input` do overlay da placa, que recebe o
+ * - na placa, o `lvgl_encoder_input` do app.overlay, que recebe o
  *   `INPUT_REL_WHEEL` do gpio-qdec e o clique do encoder.
  */
 #if DT_NODE_EXISTS(DT_NODELABEL(lvgl_keypad))
