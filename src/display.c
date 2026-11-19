@@ -306,6 +306,8 @@ static bool library_sync(void)
 	memset(rejected, 0, sizeof(rejected));
 	for (size_t i = 0; i < library_count; i++) {
 		rejected[i] = !library[i].valid;
+		/* A lista no console, para a bancada conferir índices e nomes. */
+		LOG_INF("  [%zu] %s%s", i, library[i].name, library[i].valid ? "" : " (invalida)");
 	}
 
 	return true;
