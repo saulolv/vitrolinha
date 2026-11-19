@@ -8,13 +8,12 @@
 
 /* Sample which uses the filesystem API and SDHC driver */
 
+#include "vitrolinha/track.h"
 #include <zephyr/device.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/storage/disk_access.h>
-
-#if defined(CONFIG_FAT_FILESYSTEM_ELM)
 
 #include <ff.h>
 
@@ -33,92 +32,33 @@ static struct fs_mount_t mp = {
     .fs_data = &fat_fs,
 };
 
-#elif defined(CONFIG_FILE_SYSTEM_EXT2)
-
-#include <zephyr/fs/ext2.h>
-
-#define DISK_DRIVE_NAME "SD"
-#define DISK_MOUNT_PT "/ext"
-
-static struct fs_mount_t mp = {
-    .type = FS_EXT2,
-    .flags = FS_MOUNT_FLAG_NO_FORMAT,
-    .storage_dev = (void *)DISK_DRIVE_NAME,
-    .mnt_point = "/ext",
-};
-
-#endif
-
-#if defined(CONFIG_FAT_FILESYSTEM_ELM)
-#define FS_RET_OK FR_OK
-#else
-#define FS_RET_OK 0
-#endif
-
 LOG_MODULE_REGISTER(storage);
 
 #define MAX_PATH 128
-#define SOME_FILE_NAME ""
-#define SOME_DIR_NAME "escala.csv"
-#define SOME_REQUIRED_LEN MAX(sizeof(SOME_FILE_NAME), sizeof(SOME_DIR_NAME))
+/* #define SOME_FILE_NAME "escala.cs" */
+/* #define SOME_DIR_NAME "escala.csv" */
+/* #define SOME_REQUIRED_LEN MAX(sizeof(SOME_FILE_NAME), sizeof(SOME_DIR_NAME))
+ */
 
 int lsdir(const char *path);
-#ifdef CONFIG_FS_SAMPLE_CREATE_SOME_ENTRIES
-static bool create_some_entries(const char *base_path) {
-    char path[MAX_PATH];
-    struct fs_file_t file;
-    int base = strlen(base_path);
-
-    fs_file_t_init(&file);
-
-    if (base >= (sizeof(path) - SOME_REQUIRED_LEN)) {
-        LOG_ERR("Not enough concatenation buffer to create file paths");
-        return false;
-    }
-
-    LOG_INF("Creating some dir entries in %s", base_path);
-    strncpy(path, base_path, sizeof(path));
-
-    path[base++] = '/';
-    path[base] = 0;
-    strcat(&path[base], SOME_FILE_NAME);
-
-    if (fs_open(&file, path, FS_O_CREATE) != 0) {
-        LOG_ERR("Failed to create file %s", path);
-        return false;
-    }
-    fs_close(&file);
-
-    path[base] = 0;
-    strcat(&path[base], SOME_DIR_NAME);
-
-    if (fs_mkdir(path) != 0) {
-        LOG_ERR("Failed to create dir %s", path);
-        /* If code gets here, it has at least successes to create the
-         * file so allow function to return true.
-         */
-    }
-    return true;
-}
-#endif
 
 static const char *disk_mount_pt = DISK_MOUNT_PT;
 
-int storage_init(void) {
+int storage_init(struct track_meta *out) {
     mp.mnt_point = disk_mount_pt;
 
     int res = fs_mount(&mp);
 
-    if (res == FS_RET_OK) {
+    if (res == FR_OK) {
         printk("Disk mounted.\n");
         /* Try to unmount and remount the disk */
         res = fs_unmount(&mp);
-        if (res != FS_RET_OK) {
+        if (res != FR_OK) {
             printk("Error unmounting disk\n");
             return res;
         }
         res = fs_mount(&mp);
-        if (res != FS_RET_OK) {
+        if (res != FR_OK) {
             printk("Error remounting disk\n");
             return res;
         }
