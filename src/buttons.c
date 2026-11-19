@@ -26,26 +26,25 @@
 
 LOG_MODULE_REGISTER(buttons, LOG_LEVEL_INF);
 
-/** @brief O que um botão faz. */
-enum button_action {
-	/** @brief Só aparece no console. */
-	BUTTON_NONE = 0,
-	/** @brief Pausa; apertado de novo, retoma de onde parou. */
-	BUTTON_PLAY_PAUSE,
-	/** @brief Volta a faixa ao começo e toca. */
-	BUTTON_RESTART,
-};
+/** @brief Marca o fim da sequência de um botão que publica um comando só. */
+#define BUTTON_NO_CMD CMD_KIND_COUNT
 
-/** @brief Ação de cada botão, indexada por `código - INPUT_BTN_0`. */
-static const enum button_action button_map[] = {
-	BUTTON_PLAY_PAUSE, /* INPUT_BTN_0 */
-	BUTTON_RESTART,    /* INPUT_BTN_1 */
-	BUTTON_NONE,       /* INPUT_BTN_2 */
-	BUTTON_NONE,       /* INPUT_BTN_3 */
+/**
+ * @brief Comandos de cada botão, em ordem, indexados por `código - INPUT_BTN_0`.
+ *
+ * - tocar/pausar: pausa; apertado de novo, retoma de onde parou;
+ * - reiniciar: volta a faixa ao começo e toca;
+ * - anterior e seguinte: trocam de faixa, dando a volta nas pontas.
+ */
+static const enum cmd_kind button_map[][2] = {
+	{CMD_PLAY_PAUSE, BUTTON_NO_CMD}, /* INPUT_BTN_0: tocar/pausar */
+	{CMD_STOP, CMD_PLAY_PAUSE},      /* INPUT_BTN_1: reiniciar */
+	{CMD_PREV, BUTTON_NO_CMD},       /* INPUT_BTN_2: anterior */
+	{CMD_NEXT, BUTTON_NO_CMD},       /* INPUT_BTN_3: seguinte */
 };
 
 /**
- * @brief Publica o comando de um botão apertado.
+ * @brief Publica os comandos de um botão apertado.
  *
  * Nunca bloqueia: @ref cmd_post descarta com fila cheia. No reinício, se o
  * ::CMD_STOP não coube, o ::CMD_PLAY_PAUSE nem é tentado — sozinho ele
@@ -54,17 +53,14 @@ static const enum button_action button_map[] = {
 static void button_pressed(uint16_t code)
 {
 	size_t index = (size_t)(code - INPUT_BTN_0);
-	int err = 0;
+	const enum cmd_kind *cmds = button_map[index];
+	int err;
 
 	LOG_INF("Botao %zu apertado", index);
 
-	if (button_map[index] == BUTTON_PLAY_PAUSE) {
-		err = cmd_post(CMD_PLAY_PAUSE, TRACK_NONE);
-	} else if (button_map[index] == BUTTON_RESTART) {
-		err = cmd_post(CMD_STOP, TRACK_NONE);
-		if (err == 0) {
-			err = cmd_post(CMD_PLAY_PAUSE, TRACK_NONE);
-		}
+	err = cmd_post(cmds[0], TRACK_NONE);
+	if ((err == 0) && (cmds[1] != BUTTON_NO_CMD)) {
+		err = cmd_post(cmds[1], TRACK_NONE);
 	}
 
 	if (err != 0) {

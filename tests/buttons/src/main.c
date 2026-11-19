@@ -77,11 +77,16 @@ ZTEST(buttons, test_botao_1_reinicia)
 	expect_empty();
 }
 
-ZTEST(buttons, test_botoes_sem_acao_nao_publicam)
+ZTEST(buttons, test_botoes_2_e_3_trocam_de_faixa)
 {
+	/* Um comando por aperto; a volta nas pontas é do player. */
 	click(INPUT_BTN_2);
 	click(INPUT_BTN_3);
+	click(INPUT_BTN_3);
 
+	expect_cmd(CMD_PREV);
+	expect_cmd(CMD_NEXT);
+	expect_cmd(CMD_NEXT);
 	expect_empty();
 }
 
