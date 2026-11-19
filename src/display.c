@@ -81,8 +81,13 @@ static const struct device *const input_dev = DEVICE_DT_GET(INPUT_NODE);
 /** @brief Escala da barra: a mesma de @ref snapshot_progress_permille. */
 #define BAR_MAX 1000
 
-/** @brief Linhas visíveis da biblioteca. */
-#define LIBRARY_ROWS 5
+/**
+ * @brief Linhas visíveis da biblioteca.
+ *
+ * Quatro, e não cinco: a quinta linha custava o respiro entre a lista e o
+ * mini-player, que ficavam colados.
+ */
+#define LIBRARY_ROWS 4
 
 /** @brief Altura de uma linha da lista: a da UNSCII-8, 8 px de glifo e 1 de respiro. */
 #define ROW_HEIGHT 9
@@ -97,17 +102,28 @@ static const struct device *const input_dev = DEVICE_DT_GET(INPUT_NODE);
 #define CHOOSE_TRACK "Escolha a faixa"
 
 /*
- * Geometria da biblioteca, de cima para baixo, nos 64 px da tela: 5 linhas x
- * 9 px = 45 px de lista, 2 px de folga, a barra de 6 px, mais 2 de folga e o
- * rodapé de 9 px. O teste de geometria do display confere a soma, e o
- * desenho, que as folgas ficam apagadas.
+ * Geometria da biblioteca, de cima para baixo, nos 64 px da tela:
+ *
+ *    0-35  lista, 4 linhas x 9 px
+ *   36-39  folga
+ *      40  linha divisória, na largura toda
+ *   41-44  folga
+ *   45-50  barra de progresso
+ *   51-54  folga
+ *   55-63  rodapé: ícone, nome, decorrido
+ *
+ * O teste de geometria do display confere a soma, e o desenho, que as
+ * folgas ficam apagadas e a divisória, acesa.
  */
 
-/** @brief Altura da barra do mini-player, que também separa lista e rodapé. */
+/** @brief Altura da barra do mini-player. */
 #define MINI_BAR_HEIGHT 6
 
-/** @brief Folga entre a barra e o que está acima e abaixo dela. */
-#define MINI_BAR_GAP 2
+/** @brief Folga entre os blocos do pé da biblioteca: lista, divisória, barra, rodapé. */
+#define MINI_GAP 4
+
+/** @brief Espessura da divisória entre a lista e o mini-player. */
+#define DIVIDER_HEIGHT 1
 
 /** @brief Altura da barra da tela de reprodução, que tem espaço de sobra. */
 #define PLAYBACK_BAR_HEIGHT 8
@@ -733,18 +749,22 @@ static lv_obj_t *progress_bar_create(lv_obj_t *parent, int32_t height)
 }
 
 /**
- * @brief Mini-player no rodapé da biblioteca: barra e, abaixo, uma linha.
+ * @brief Mini-player no rodapé da biblioteca: divisória, barra e uma linha.
  *
  * ```
- *   ESCALA          <- última linha da lista
- *  (=======-------)  <- progresso, que também separa lista e rodapé
+ *   ESCALA           <- última linha da lista
+ *  ________________  <- divisória
+ *  (=======-------)  <- progresso
  *  > PAUSAS    0:42  <- ícone, nome, decorrido
  * ```
+ *
+ * A divisória é criada por último, e fica depois da linha do rodapé entre os
+ * filhos da tela.
  */
 static void mini_build(void)
 {
 	mini_bar = progress_bar_create(library_screen, MINI_BAR_HEIGHT);
-	lv_obj_align(mini_bar, LV_ALIGN_BOTTOM_MID, 0, -(MINI_ROW_HEIGHT + MINI_BAR_GAP));
+	lv_obj_align(mini_bar, LV_ALIGN_BOTTOM_MID, 0, -(MINI_ROW_HEIGHT + MINI_GAP));
 
 	lv_obj_t *row = lv_obj_create(library_screen);
 
@@ -773,6 +793,16 @@ static void mini_build(void)
 
 	lv_obj_add_flag(mini_icon, LV_OBJ_FLAG_HIDDEN);
 	lv_obj_add_flag(mini_time, LV_OBJ_FLAG_HIDDEN);
+
+	/* Divisória de 1 px entre a lista e o mini-player, na largura toda. */
+	lv_obj_t *divider = lv_obj_create(library_screen);
+
+	lv_obj_remove_style_all(divider);
+	lv_obj_set_style_bg_color(divider, lv_color_black(), 0);
+	lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
+	lv_obj_set_size(divider, LV_HOR_RES, DIVIDER_HEIGHT);
+	lv_obj_align(divider, LV_ALIGN_BOTTOM_MID, 0,
+		     -(MINI_ROW_HEIGHT + MINI_GAP + MINI_BAR_HEIGHT + MINI_GAP));
 }
 
 /**

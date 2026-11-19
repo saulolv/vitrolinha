@@ -52,6 +52,7 @@ struct ui {
 	lv_obj_t *list;
 	lv_obj_t *mini_bar;
 	lv_obj_t *mini_row;
+	lv_obj_t *divider;
 	lv_obj_t *mini_icon;
 	lv_obj_t *mini_name;
 	lv_obj_t *mini_time;
@@ -144,6 +145,7 @@ static struct ui start_ui(const char *dir)
 	/* O filho 1 é a barra de rolagem da lista. */
 	ui.mini_bar = lv_obj_get_child(ui.library, 2);
 	ui.mini_row = lv_obj_get_child(ui.library, 3);
+	ui.divider = lv_obj_get_child(ui.library, 4);
 	ui.mini_icon = lv_obj_get_child(ui.mini_row, 0);
 	ui.mini_name = lv_obj_get_child(ui.mini_row, 1);
 	ui.mini_time = lv_obj_get_child(ui.mini_row, 2);
@@ -376,15 +378,15 @@ ZTEST(display, test_biblioteca_cheia_mostra_so_as_32_primeiras)
 {
 	struct ui ui = start_ui("cheia");
 
-	/* Cinco linhas na tela, as primeiras da biblioteca. */
-	zassert_str_equal("  f00\n  f01\n  f02\n  f03\n  f04", list_text(&ui));
+	/* Quatro linhas na tela, as primeiras da biblioteca. */
+	zassert_str_equal("  f00\n  f01\n  f02\n  f03", list_text(&ui));
 
 	/* Indo até o fim, a última é a 32.ª: a 33.ª ficou de fora. */
 	for (size_t i = 0; i < FULL_COUNT + 5U; i++) {
 		tap(INPUT_KEY_RIGHT);
 	}
-	zassert_str_equal("  f27\n  f28\n  f29\n  f30\n  f31", list_text(&ui));
-	zassert_equal(4, focused(&ui));
+	zassert_str_equal("  f28\n  f29\n  f30\n  f31", list_text(&ui));
+	zassert_equal(3, focused(&ui));
 }
 
 ZTEST(display, test_girar_e_clicar_toca_e_abre_a_reproducao)
@@ -434,21 +436,21 @@ ZTEST(display, test_lista_longa_rola_nas_bordas)
 	struct ui ui = start_ui("cheia");
 
 	/* O destaque desce pelas linhas sem a lista se mexer. */
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < 3; i++) {
 		tap(INPUT_KEY_RIGHT);
 	}
-	zassert_equal(4, focused(&ui));
-	zassert_str_equal("  f04", focused_text(&ui));
-	zassert_str_equal("  f00\n  f01\n  f02\n  f03\n  f04", list_text(&ui));
+	zassert_equal(3, focused(&ui));
+	zassert_str_equal("  f03", focused_text(&ui));
+	zassert_str_equal("  f00\n  f01\n  f02\n  f03", list_text(&ui));
 
 	/* Passando da última linha, a lista rola uma, e o destaque fica nela. */
 	tap(INPUT_KEY_RIGHT);
-	zassert_equal(4, focused(&ui));
-	zassert_str_equal("  f05", focused_text(&ui));
-	zassert_str_equal("  f01\n  f02\n  f03\n  f04\n  f05", list_text(&ui));
+	zassert_equal(3, focused(&ui));
+	zassert_str_equal("  f04", focused_text(&ui));
+	zassert_str_equal("  f01\n  f02\n  f03\n  f04", list_text(&ui));
 
 	/* Subindo, o destaque sobe pelas linhas, e só rola no topo. */
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < 3; i++) {
 		tap(INPUT_KEY_LEFT);
 	}
 	zassert_equal(0, focused(&ui));
@@ -531,15 +533,20 @@ ZTEST(display, test_lista_e_mini_player_cabem_na_tela_sem_se_sobrepor)
 
 	lv_obj_update_layout(ui.library);
 
-	/* Cinco linhas inteiras da fonte no alto, a barra abaixo da lista, o
-	 * rodapé abaixo da barra com altura para uma linha sem cortar, e tudo
-	 * dentro dos 64 px. Foi este teste que mostrou que a linha da UNSCII-8
-	 * tem 9 px, e não 8: com 2 px de espaçamento a lista invadia a barra.
+	/* Quatro linhas inteiras da fonte no alto, a divisória e a barra abaixo
+	 * da lista, o rodapé abaixo da barra com altura para uma linha sem
+	 * cortar, e tudo dentro dos 64 px. Foi este teste que mostrou que a
+	 * linha da UNSCII-8 tem 9 px, e não 8: com 2 px de espaçamento a lista
+	 * invadia a barra.
 	 */
 	zassert_equal(0, lv_obj_get_y(ui.list));
-	zassert_equal(5 * line, lv_obj_get_height(ui.list), "linha de %d px", line);
-	zassert_true(lv_obj_get_y(ui.mini_bar) > lv_obj_get_height(ui.list),
-		     "barra sobre a lista");
+	zassert_equal(4 * line, lv_obj_get_height(ui.list), "linha de %d px", line);
+	zassert_true(lv_obj_get_y(ui.divider) > lv_obj_get_height(ui.list),
+		     "divisoria sobre a lista");
+	zassert_equal(128, lv_obj_get_width(ui.divider));
+	zassert_true(lv_obj_get_y(ui.mini_bar) >
+		     lv_obj_get_y(ui.divider) + lv_obj_get_height(ui.divider),
+		     "barra sobre a divisoria");
 	zassert_true(lv_obj_get_y(ui.mini_row) >
 		     lv_obj_get_y(ui.mini_bar) + lv_obj_get_height(ui.mini_bar),
 		     "rodape sobre a barra");
@@ -571,15 +578,23 @@ ZTEST(display, test_desenho_da_biblioteca_sem_sobras)
 	fake_display_dump("biblioteca");
 
 	int32_t list_end = lv_obj_get_y(ui.list) + lv_obj_get_height(ui.list);
+	int32_t divider = lv_obj_get_y(ui.divider);
 	int32_t bar_top = lv_obj_get_y(ui.mini_bar);
 	int32_t bar_end = bar_top + lv_obj_get_height(ui.mini_bar);
 	int32_t row_top = lv_obj_get_y(ui.mini_row);
 
-	/* As folgas acima e abaixo da barra ficam apagadas. Foi uma folga acesa
-	 * — o contorno de foco do tema, 2 px por fora do roller — que apareceu
-	 * no OLED como uma faixa colada na barra.
+	/* A divisória acesa de ponta a ponta, e as folgas em volta dela e da
+	 * barra apagadas. Foi uma folga acesa — o contorno de foco do tema, 2 px
+	 * por fora do roller — que apareceu no OLED como uma faixa colada na
+	 * barra.
 	 */
-	for (int32_t y = list_end; y < bar_top; y++) {
+	for (int x = 0; x < 128; x++) {
+		zassert_true(fake_display_lit(x, divider), "divisoria apagada em x=%d", x);
+	}
+	for (int32_t y = list_end; y < divider; y++) {
+		zassert_false(row_lit(y), "folga acesa na linha %d, acima da divisoria", y);
+	}
+	for (int32_t y = divider + 1; y < bar_top; y++) {
 		zassert_false(row_lit(y), "folga acesa na linha %d, acima da barra", y);
 	}
 	for (int32_t y = bar_end; y < row_top; y++) {
