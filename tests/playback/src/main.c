@@ -56,6 +56,7 @@ static void *setup(void)
 	struct track_meta tracks[LIBRARY_MAX];
 	const char invalid[] = "frequency_hz,duration_ms\n1000,0\n";
 	const char out_of_range[] = "frequency_hz,duration_ms\n440,100\n19,100\n";
+	const char rtttl[] = "Teste:d=4,o=5,b=120:c,e";
 
 	zassert_not_null(mkdtemp(directory));
 	write_file("0.csv", escala, sizeof(escala));
@@ -72,8 +73,10 @@ static void *setup(void)
 	}
 	zassert_ok(fclose(file));
 	write_file("5.csv", out_of_range, sizeof(out_of_range) - 1);
+	write_file("6.rtx", rtttl, sizeof(rtttl) - 1);
 	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", directory, 1));
-	zassert_equal(6, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+	zassert_equal(7, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+	zassert_str_equal("Teste", tracks[6].name, "o nome sai do cabecalho RTTTL");
 	zassert_ok(loader_init());
 	zassert_ok(tone_init());
 	return NULL;
@@ -90,6 +93,8 @@ static void teardown(void *fixture)
 		/* O teste de reinício remove 4.csv antes de pedir a faixa em RAM. */
 		zassert_true(unlink(path) == 0 || errno == ENOENT);
 	}
+	file_path("6.rtx");
+	zassert_ok(unlink(path));
 	file_path("trace.csv");
 	zassert_ok(unlink(path));
 	zassert_ok(rmdir(directory));
@@ -154,6 +159,23 @@ ZTEST(playback, test_loader_substituicao_fila_e_reinicio)
 	result = await_load(id);
 	zassert_equal(-ERANGE, result.status);
 	zassert_equal(3, result.error_line);
+	zassert_ok(loader_cancel(id));
+	/* RTTTL pelo mesmo loader: o formato sai do conteúdo. Duas semínimas a
+	 * 120 bpm, Dó 5 e Mi 5, cada uma com o silêncio de articulação.
+	 */
+	zassert_ok(loader_request(6, &id));
+	result = await_load(id);
+	zassert_ok(result.status);
+	zassert_equal(1000000U, result.total_us);
+	zassert_equal(1, loader_next_event(id, &event));
+	zassert_equal(0, event.offset_us);
+	zassert_equal(523, event.freq_hz);
+	zassert_equal(1, loader_next_event(id, &event));
+	zassert_equal(500000U - 20000U, event.offset_us);
+	zassert_equal(0, event.freq_hz);
+	zassert_equal(1, loader_next_event(id, &event));
+	zassert_equal(500000U, event.offset_us);
+	zassert_equal(659, event.freq_hz);
 	zassert_ok(loader_cancel(id));
 }
 

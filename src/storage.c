@@ -4,13 +4,14 @@
  *
  * Três decisões moldam este arquivo.
  *
- * **As faixas são os CSVs da raiz**, no formato do @ref parser_csv.h, e o
- * nome exibido é o do arquivo sem a extensão. O CSV não tem campo de nome, e
- * sem `CONFIG_FS_FATFS_LFN` o nome chega em 8.3 e em maiúsculas
- * (`FURELISE.CSV` vira `FURELISE`) — o preço de não pagar a RAM estática dos
- * nomes longos. A varredura ainda abre cada arquivo para conferir a primeira
- * linha: o arquivo sem o cabeçalho que o parser exige entra marcado como
- * inválido, em vez de só falhar quando for selecionado.
+ * **As faixas são os arquivos de música da raiz**: RTTTL em `.TXT`, `.RTX`
+ * ou `.RTT`, e CSV de bancada em `.CSV`. O nome exibido do RTTTL sai do
+ * cabeçalho dele (@ref track_rtttl_name): sem `CONFIG_FS_FATFS_LFN` o
+ * diretório entrega o nome em 8.3 e em maiúsculas, e ler o cabeçalho evita a
+ * RAM estática dos nomes longos. O CSV não tem campo de nome e fica com o do
+ * arquivo sem a extensão (`FURELISE.CSV` vira `FURELISE`). A varredura abre
+ * cada arquivo para conferir o começo: o que não tem o cabeçalho do formato
+ * entra marcado como inválido, em vez de só falhar quando for selecionado.
  *
  * **A faixa é carregada inteira, de uma vez**, antes de tocar. O tamanho é
  * conferido na entrada de diretório antes de ler um byte, para que o arquivo
@@ -49,16 +50,17 @@ LOG_MODULE_REGISTER(storage, LOG_LEVEL_INF);
  */
 #define STORAGE_CSV_HEADER "frequency_hz,duration_ms"
 
-/** @brief Extensão das faixas, como o FatFs a entrega sem nomes longos. */
+/** @brief Extensão do CSV, como o FatFs a entrega sem nomes longos. */
 #define STORAGE_CSV_EXTENSION ".CSV"
 
 /**
  * @brief Quanto de cada arquivo é lido para conferir o cabeçalho.
  *
- * O cabeçalho e o CRLF que um editor do Windows deixa depois dele. Cabe num
- * setor, então custa a mesma leitura que um byte custaria.
+ * O bastante para o nome do RTTTL, e para o cabeçalho do CSV com o CRLF que
+ * um editor do Windows deixa depois dele. Cabe num setor, então custa a
+ * mesma leitura que um byte custaria.
  */
-#define STORAGE_HEADER_PEEK (sizeof(STORAGE_CSV_HEADER) + 1U)
+#define STORAGE_HEADER_PEEK MAX(TRACK_RTTTL_PEEK, sizeof(STORAGE_CSV_HEADER) + 1U)
 
 /**
  * @brief Tamanho de um nome 8.3 com terminador, como o `fs_readdir` o entrega.
@@ -106,8 +108,9 @@ static void track_path(char path[STORAGE_PATH_SIZE], const char *name)
 /**
  * @brief Diz se a entrada de diretório é uma faixa.
  *
- * Só arquivos `.CSV`. Sem nomes longos o FatFs entrega o nome 8.3 tal como
- * está gravado no diretório, sempre em maiúsculas — daí a comparação exata.
+ * Só as extensões de música: `.TXT`, `.RTX`, `.RTT` e `.CSV`. Sem nomes
+ * longos o FatFs entrega o nome 8.3 tal como está gravado no diretório,
+ * sempre em maiúsculas — daí a comparação exata.
  *
  * O `_` inicial descarta as sobras que o macOS deixa em todo cartão: o
  * `._FURELISE.CSV` de metadados vira `_FURELI~1.CSV` em 8.3, com extensão de
@@ -118,6 +121,7 @@ static void track_path(char path[STORAGE_PATH_SIZE], const char *name)
  */
 static bool is_track_file(const struct fs_dirent *entry)
 {
+	static const char *const extensions[] = {".TXT", ".RTX", ".RTT", STORAGE_CSV_EXTENSION};
 	const char *dot;
 
 	if ((entry->type != FS_DIR_ENTRY_FILE) || (entry->name[0] == '_')) {
@@ -125,8 +129,17 @@ static bool is_track_file(const struct fs_dirent *entry)
 	}
 
 	dot = strrchr(entry->name, '.');
+	if (dot == NULL) {
+		return false;
+	}
 
-	return (dot != NULL) && (strcmp(dot, STORAGE_CSV_EXTENSION) == 0);
+	for (size_t i = 0U; i < ARRAY_SIZE(extensions); i++) {
+		if (strcmp(dot, extensions[i]) == 0) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 /**
@@ -175,7 +188,9 @@ static int describe_track(const struct fs_dirent *entry, uint8_t index,
 {
 	char path[STORAGE_PATH_SIZE];
 	struct fs_file_t file;
-	size_t name_len = strlen(entry->name) - (sizeof(STORAGE_CSV_EXTENSION) - 1U);
+	const char *dot = strrchr(entry->name, '.');
+	const char *name = entry->name;
+	size_t name_len = (size_t)(dot - entry->name);
 	ssize_t got;
 	bool valid;
 
@@ -203,9 +218,22 @@ static int describe_track(const struct fs_dirent *entry, uint8_t index,
 	 * na entrada de diretório, e a marca na lista poupa a quem seleciona a
 	 * faixa uma tela de erro.
 	 */
-	valid = has_csv_header(peek, (size_t)got) && (entry->size <= STORAGE_FILE_MAX);
+	if (strcmp(dot, STORAGE_CSV_EXTENSION) == 0) {
+		valid = has_csv_header(peek, (size_t)got);
+	} else {
+		const char *header;
+		size_t header_len;
 
-	track_meta_init(meta, index, entry->name, name_len, valid);
+		/* Sem nome no cabeçalho (`:d=4,...`), fica o do arquivo. */
+		valid = track_rtttl_name((const char *)peek, (size_t)got, &header, &header_len);
+		if (valid && (header_len > 0U)) {
+			name = header;
+			name_len = header_len;
+		}
+	}
+
+	valid = valid && (entry->size <= STORAGE_FILE_MAX);
+	track_meta_init(meta, index, name, name_len, valid);
 
 	return 0;
 }

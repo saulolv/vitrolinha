@@ -206,6 +206,51 @@ ZTEST(storage_card, test_nome_e_o_do_arquivo_sem_extensao)
 	zassert_true(library[0].valid);
 }
 
+ZTEST(storage_card, test_rtttl_tem_o_nome_do_cabecalho)
+{
+	struct track_meta library[LIBRARY_MAX];
+
+	/* O diretório diz FURELIS.TXT; a tela mostra o nome da melodia. As três
+	 * extensões que os toques RTTTL costumam ter.
+	 */
+	put_text("FURELIS.TXT", "Fur Elise:d=8,o=5,b=125:e6,d#6,e6");
+	put_text("ODE.RTX", "\xEF\xBB\xBF\r\n  Ode to Joy  :d=4:e,e,f");
+	put_text("NOKIA.RTT", "Nokia Tune:d=4,o=5,b=225:8e6,8d6,f#,g#");
+
+	zassert_equal(3, storage_scan(library, ARRAY_SIZE(library), NULL));
+	zassert_str_equal("Fur Elise", library[0].name);
+	zassert_str_equal("Ode to Joy", library[1].name, "BOM e espacos aparados");
+	zassert_str_equal("Nokia Tune", library[2].name);
+	for (int i = 0; i < 3; i++) {
+		zassert_true(library[i].valid, "faixa %d", i);
+	}
+}
+
+ZTEST(storage_card, test_rtttl_sem_nome_fica_com_o_do_arquivo)
+{
+	struct track_meta library[LIBRARY_MAX];
+
+	put_text("ANONIMO.RTX", ":d=4,o=5,b=63:c,d,e");
+
+	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
+	zassert_str_equal("ANONIMO", library[0].name);
+	zassert_true(library[0].valid);
+}
+
+ZTEST(storage_card, test_rtttl_sem_cabecalho_fica_invalido)
+{
+	struct track_meta library[LIBRARY_MAX];
+
+	/* Sem `:` na primeira linha, não é RTTTL: listado com o nome 8.3 e
+	 * marcado, em vez de sumir.
+	 */
+	put_text("NOTAS.TXT", "e6,d#6,e6\nsegunda linha: com dois-pontos");
+
+	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
+	zassert_str_equal("NOTAS", library[0].name);
+	zassert_false(library[0].valid);
+}
+
 ZTEST(storage_card, test_faixas_saem_na_ordem_do_diretorio)
 {
 	struct track_meta library[LIBRARY_MAX];
@@ -232,8 +277,7 @@ ZTEST(storage_card, test_o_que_nao_e_faixa_fica_de_fora)
 	struct track_meta library[LIBRARY_MAX];
 	size_t skipped = 99U;
 
-	/* Um RTTTL de antes da troca de formato: o loader não o tocaria. */
-	put_text("FURELIS.TXT", "Fur Elise:d=8,o=5,b=125:e6,d#6,e6");
+	put_text("MUSICA.MP3", CSV);
 	put_text("IMAGEM.BIN", CSV);
 	put_text("LEIAME", CSV);
 	/* A sobra de metadados que o macOS deixa em todo cartão. */
