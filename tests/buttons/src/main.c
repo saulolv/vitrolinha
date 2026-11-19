@@ -1,0 +1,155 @@
+/**
+ * @file main.c
+ * @brief Testes de src/buttons.c: botão apertado vira comando na fila.
+ *
+ * O evento entra pelo mesmo caminho do gpio-keys, `input_report_key`, e o
+ * que se confere é o que chega à fila do player.
+ */
+
+#include <vitrolinha/cmd.h>
+#include <vitrolinha/track.h>
+
+#include <errno.h>
+
+#include <zephyr/input/input.h>
+#include <zephyr/kernel.h>
+#include <zephyr/ztest.h>
+
+/** @brief Aperta e solta um botão. */
+static void click(uint16_t code)
+{
+	zassert_ok(input_report_key(NULL, code, 1, true, K_FOREVER));
+	zassert_ok(input_report_key(NULL, code, 0, true, K_FOREVER));
+}
+
+/** @brief Retira o próximo comando e confere o tipo. */
+static void expect_cmd(enum cmd_kind kind)
+{
+	struct cmd got;
+
+	zassert_ok(cmd_get(&got, K_NO_WAIT), "fila vazia, esperava %s", cmd_kind_name(kind));
+	zassert_equal((uint8_t)kind, got.kind, "veio %s, esperava %s",
+		      cmd_kind_name((enum cmd_kind)got.kind), cmd_kind_name(kind));
+	zassert_equal(TRACK_NONE, got.track);
+}
+
+static void expect_empty(void)
+{
+	struct cmd got;
+
+	zassert_equal(-ENOMSG, cmd_get(&got, K_NO_WAIT), "sobrou comando na fila");
+}
+
+/** @brief Enche a fila deixando @p free posições livres. */
+static void fill_queue(size_t free)
+{
+	for (size_t i = 0U; i < (CMD_QUEUE_DEPTH - free); i++) {
+		zassert_ok(cmd_post(CMD_NEXT, TRACK_NONE));
+	}
+}
+
+static void buttons_before(void *fixture)
+{
+	ARG_UNUSED(fixture);
+	cmd_flush();
+}
+
+ZTEST_SUITE(buttons, NULL, NULL, buttons_before, NULL, NULL);
+
+ZTEST(buttons, test_botao_0_pausa_e_retoma)
+{
+	/* Um comando por aperto: o player alterna entre pausar e retomar. */
+	click(INPUT_BTN_0);
+	click(INPUT_BTN_0);
+
+	expect_cmd(CMD_PLAY_PAUSE);
+	expect_cmd(CMD_PLAY_PAUSE);
+	expect_empty();
+}
+
+ZTEST(buttons, test_botao_1_reinicia)
+{
+	/* Parar e tocar: o player recomeça a faixa da cópia em RAM. */
+	click(INPUT_BTN_1);
+
+	expect_cmd(CMD_STOP);
+	expect_cmd(CMD_PLAY_PAUSE);
+	expect_empty();
+}
+
+ZTEST(buttons, test_botoes_sem_acao_nao_publicam)
+{
+	click(INPUT_BTN_2);
+	click(INPUT_BTN_3);
+
+	expect_empty();
+}
+
+ZTEST(buttons, test_soltar_nao_publica)
+{
+	zassert_ok(input_report_key(NULL, INPUT_BTN_0, 0, true, K_FOREVER));
+
+	expect_empty();
+}
+
+ZTEST(buttons, test_o_que_nao_e_botao_e_ignorado)
+{
+	/* O clique do encoder é do LVGL, não do transporte. */
+	click(INPUT_KEY_ENTER);
+	/* Código logo depois dos quatro botões. */
+	click(INPUT_BTN_0 + 4U);
+	/* O giro do encoder: outro tipo de evento. */
+	zassert_ok(input_report_rel(NULL, INPUT_REL_WHEEL, 1, true, K_FOREVER));
+
+	expect_empty();
+}
+
+ZTEST(buttons, test_codigo_abaixo_dos_botoes_e_ignorado)
+{
+	click(INPUT_BTN_0 - 1U);
+
+	expect_empty();
+}
+
+ZTEST(buttons, test_fila_cheia_descarta_a_pausa)
+{
+	fill_queue(0U);
+
+	click(INPUT_BTN_0);
+
+	for (size_t i = 0U; i < CMD_QUEUE_DEPTH; i++) {
+		expect_cmd(CMD_NEXT);
+	}
+	expect_empty();
+}
+
+ZTEST(buttons, test_reinicio_sem_espaco_nao_vira_pausa)
+{
+	/* Sem lugar nem para o STOP, o PLAY_PAUSE não pode ir sozinho: viraria
+	 * pausa em vez de reinício.
+	 */
+	fill_queue(0U);
+
+	click(INPUT_BTN_1);
+
+	for (size_t i = 0U; i < CMD_QUEUE_DEPTH; i++) {
+		expect_cmd(CMD_NEXT);
+	}
+	expect_empty();
+}
+
+ZTEST(buttons, test_reinicio_com_uma_vaga_so_para)
+{
+	/* Coube o STOP, não coube o PLAY_PAUSE: a faixa para, e o aviso sai no
+	 * console. Parar é o menor dos males — não toca do lugar errado.
+	 */
+	fill_queue(1U);
+
+	click(INPUT_BTN_1);
+
+	for (size_t i = 0U; i < (CMD_QUEUE_DEPTH - 1U); i++) {
+		expect_cmd(CMD_NEXT);
+	}
+	expect_cmd(CMD_STOP);
+	expect_empty();
+}

@@ -39,6 +39,15 @@
 #define TONE_FREQ_MIN_HZ 20U
 #define TONE_FREQ_MAX_HZ 20000U
 
+/**
+ * @brief Relógio mínimo do canal: dois ciclos por período na nota mais aguda.
+ *
+ * Abaixo disso a nota mais aguda teria período menor que 2, sem espaço para
+ * pulso e vale. Na placa o relógio é 150 MHz, e com ele qualquer nota da
+ * faixa acima tem período entre 7 500 e 7 500 000 ciclos.
+ */
+#define TONE_CLOCK_MIN_HZ (2U * TONE_FREQ_MAX_HZ)
+
 static const struct pwm_dt_spec buzzer = PWM_DT_SPEC_GET(DT_ALIAS(pwm_buzzer));
 
 /** @brief Relógio do canal, lido uma vez em @ref tone_init. */
@@ -49,15 +58,22 @@ static uint32_t last_period = 2U;
 
 int tone_init(void)
 {
-	int err;
-
 	if (!pwm_is_ready_dt(&buzzer)) {
 		return -ENODEV;
 	}
 
-	err = pwm_get_cycles_per_sec(buzzer.dev, buzzer.channel, &cycles_per_sec);
-	if (err != 0) {
-		return err;
+	/* Uma falha do driver deixa o relógio em zero, que a faixa abaixo
+	 * recusa como qualquer outro relógio inútil.
+	 */
+	cycles_per_sec = 0U;
+	(void)pwm_get_cycles_per_sec(buzzer.dev, buzzer.channel, &cycles_per_sec);
+
+	/* Uma comparação só cobre os dois lados: abaixo do mínimo a subtração
+	 * dá a volta e passa do teto. Com o relógio de 32 bits, o período de
+	 * qualquer nota cabe no uint32_t do pwm_set_cycles.
+	 */
+	if ((cycles_per_sec - TONE_CLOCK_MIN_HZ) > ((uint64_t)UINT32_MAX - TONE_CLOCK_MIN_HZ)) {
+		return -ENOTSUP;
 	}
 
 	return tone_set_frequency(0U);
@@ -65,7 +81,7 @@ int tone_init(void)
 
 int tone_set_frequency(uint32_t frequency_hz)
 {
-	uint64_t period = last_period;
+	uint32_t period = last_period;
 	uint32_t pulse = 0U;
 	int err;
 
@@ -74,19 +90,18 @@ int tone_set_frequency(uint32_t frequency_hz)
 			return -ERANGE;
 		}
 
-		/* Arredondado ao ciclo mais próximo, não truncado. */
-		period = (cycles_per_sec + (frequency_hz / 2U)) / frequency_hz;
-		if ((period < 2U) || (period > UINT32_MAX)) {
-			return -ERANGE;
-		}
+		/* Arredondado ao ciclo mais próximo, não truncado. O relógio
+		 * conferido no tone_init garante período de 2 a UINT32_MAX / 20.
+		 */
+		period = (uint32_t)((cycles_per_sec + (frequency_hz / 2U)) / frequency_hz);
 
 		/* 50%: onde o piezo é mais alto, segundo a bring-up do fabricante. */
-		pulse = (uint32_t)(period / 2U);
+		pulse = period / 2U;
 	}
 
-	err = pwm_set_cycles(buzzer.dev, buzzer.channel, (uint32_t)period, pulse, buzzer.flags);
+	err = pwm_set_cycles(buzzer.dev, buzzer.channel, period, pulse, buzzer.flags);
 	if (err == 0) {
-		last_period = (uint32_t)period;
+		last_period = period;
 	}
 
 	/* No rp2xxx, -EINVAL também é período que o divisor não alcança. */

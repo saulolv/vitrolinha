@@ -28,6 +28,12 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/parser_csv.c
 )
 
+# Os botões de transporte. Condicional porque escutam o subsistema `input`,
+# que só a aplicação e os testes de entrada ligam.
+target_sources_ifdef(CONFIG_INPUT app PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}/buttons.c
+)
+
 # A interface. Condicional porque depende do LVGL, que só a aplicação liga: na
 # lista comum, cada suíte de teste tentaria compilá-la sem os cabeçalhos dele.
 target_sources_ifdef(CONFIG_LVGL app PRIVATE
@@ -47,16 +53,22 @@ target_sources_ifdef(CONFIG_LVGL app PRIVATE
 # carga num mesmo `k_poll`. Os dois alvos e tests/playback/ a ligam; os
 # demais testes não usam o player e ficam sem ele. A omissão não é
 # silenciosa — quem chamar `player_init()` sem a opção não linka.
+#
+# Onde há PWM, ele é a saída — na placa, o buzzer; em tests/tone_pwm/, o PWM
+# de mentira do Zephyr. A captura só entra onde não há: o native_sim liga a
+# libc do computador por padrão, e sem esta precedência o teste do PWM
+# testaria a captura sem perceber.
 set(vitrolinha_has_tone OFF)
 
 if(CONFIG_BOARD_NATIVE_SIM AND CONFIG_EXTERNAL_LIBC)
-  target_sources(app PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/tone_trace.c
-    ${CMAKE_CURRENT_LIST_DIR}/playback_trace.c
-  )
-  set(vitrolinha_has_tone ON)
-elseif(CONFIG_BOARD_ZBOOK AND CONFIG_PWM)
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/playback_trace.c)
+endif()
+
+if(CONFIG_PWM)
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/tone_pwm.c)
+  set(vitrolinha_has_tone ON)
+elseif(CONFIG_BOARD_NATIVE_SIM AND CONFIG_EXTERNAL_LIBC)
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/tone_trace.c)
   set(vitrolinha_has_tone ON)
 endif()
 

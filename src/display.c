@@ -288,15 +288,14 @@ static void refresh_timer_cb(lv_timer_t *timer) {
 
     snapshot_read(&snap);
 
-    /* Rastro de bancada: cada mudança de estado publicada pelo player sai
-     * no console. Daqui, e não do player, porque é a thread de baixa
-     * prioridade que já lê o instantâneo.
+    /* Rastro de bancada: cada publicação nova do player sai no console. Daqui,
+     * e não do player, porque é a thread de baixa prioridade que já lê o
+     * instantâneo. O decorrido não mora no instantâneo — sai de base_us e do
+     * relógio —, então o registro só muda quando o player publica algo novo.
      */
     static struct player_snapshot logged = SNAPSHOT_IDLE_INITIALIZER;
 
-    if ((snap.state != logged.state) || (snap.track != logged.track) ||
-        (snap.load_error != logged.load_error) ||
-        ((snap.state == PLAYER_PLAYING) && (snap.base_us != logged.base_us))) {
+    if (memcmp(&snap, &logged, sizeof(snap)) != 0) {
         LOG_INF("Player: estado %d, faixa %d, %u/%u ms, erro %d (linha %u)",
                 snap.state, snap.track,
                 snapshot_elapsed_us(&snap, now_us) / 1000U,

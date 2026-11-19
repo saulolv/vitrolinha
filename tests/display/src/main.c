@@ -328,6 +328,13 @@ ZTEST(display, test_barra_e_rotulo_seguem_o_instantaneo)
 	zassert_str_equal("b", lv_label_get_text(ui.label));
 	zassert_within(lv_bar_get_value(ui.bar), 550, 50);
 
+	/* Sem publicação nova a barra anda sozinha, pelo relógio: o player não
+	 * precisa publicar a cada nota para o progresso avançar.
+	 */
+	refresh();
+	zassert_str_equal("b", lv_label_get_text(ui.label));
+	zassert_true(lv_bar_get_value(ui.bar) > 900, "a barra parou sem publicacao nova");
+
 	/* Mesma faixa, pausada no fim: o rótulo fica, a barra vai a 1000. */
 	publish(PLAYER_PAUSED, 1, 2U * USEC_PER_SEC, 2U * USEC_PER_SEC);
 	refresh();

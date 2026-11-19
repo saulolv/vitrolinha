@@ -1,0 +1,20 @@
+tests:
+  vitrolinha.tone_pwm:
+    tags:
+      - vitrolinha
+      - tone
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim
+  # O mesmo teste com um relógio de PWM lento demais para a nota mais aguda:
+  # o tone_init tem de recusá-lo em vez de programar período inválido.
+  vitrolinha.tone_pwm.relogio_lento:
+    extra_args: EXTRA_DTC_OVERLAY_FILE=relogio_lento.overlay
+    tags:
+      - vitrolinha
+      - tone
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim

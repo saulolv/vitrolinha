@@ -369,6 +369,12 @@ ZTEST(storage_card, test_cr_isolado_invalida)
 	zassert_false(scan_one_valid("CR.CSV", "frequency_hz,duration_ms\r440,250\n"));
 }
 
+ZTEST(storage_card, test_arquivo_acaba_no_cr_do_cabecalho)
+{
+	/* O CR sem o LF depois dele, porque o arquivo acabou: meia quebra. */
+	zassert_false(scan_one_valid("FIMCR.CSV", "frequency_hz,duration_ms\r"));
+}
+
 ZTEST(storage_card, test_cabecalho_diferente_invalida)
 {
 	zassert_false(scan_one_valid("MAIUSC.CSV", "FREQUENCY_HZ,DURATION_MS\n440,250\n"));
