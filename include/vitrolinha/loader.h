@@ -46,6 +46,8 @@ struct loader_result {
 	uint32_t total_us;
 	/** @brief Linha do arquivo que falhou, a partir de 1; zero se não aplicável. */
 	size_t error_line;
+	/** @brief Coluna do byte que falhou, a partir de 1; zero junto com a linha. */
+	size_t error_column;
 };
 
 /**

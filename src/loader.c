@@ -104,6 +104,7 @@ static void loader_worker(void *a, void *b, void *c)
 			}
 			result = (struct loader_result){
 				.track = track, .status = status, .error_line = error.line,
+				.error_column = error.column,
 				.total_us = status == 0 ? parser_total_us(&parser) : 0,
 			};
 			if (status != 0) {

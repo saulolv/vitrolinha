@@ -151,6 +151,7 @@ ZTEST(playback, test_loader_substituicao_fila_e_reinicio)
 	result = await_load(id);
 	zassert_equal(-EINVAL, result.status);
 	zassert_equal(2, result.error_line);
+	zassert_equal(6, result.error_column, "a duracao zero, depois de 1000,");
 	zassert_ok(loader_cancel(id));
 	/* Frequência que o buzzer recusaria: falha na carga, com a linha, e
 	 * não no meio da reprodução.
@@ -159,6 +160,7 @@ ZTEST(playback, test_loader_substituicao_fila_e_reinicio)
 	result = await_load(id);
 	zassert_equal(-ERANGE, result.status);
 	zassert_equal(3, result.error_line);
+	zassert_equal(1, result.error_column);
 	zassert_ok(loader_cancel(id));
 	/* RTTTL pelo mesmo loader: o formato sai do conteúdo. Duas semínimas a
 	 * 120 bpm, Dó 5 e Mi 5, cada uma com o silêncio de articulação.
@@ -404,12 +406,14 @@ ZTEST(playback, test_player_falhas_e_comandos_fora_de_hora)
 	/* O motivo e a linha chegam à tela: duração zero na linha 2. */
 	zassert_equal(-EINVAL, snap.load_error);
 	zassert_equal(2, snap.error_line);
+	zassert_equal(6, snap.error_column);
 	zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
 	snap = settle();
 	zassert_equal(PLAYER_STOPPED, snap.state);
 	zassert_equal(3, snap.track);
 	zassert_equal(-EINVAL, snap.load_error);
 	zassert_equal(2, snap.error_line);
+	zassert_equal(6, snap.error_column);
 
 	/* Parar durante a carga cancela o pedido: nada chega a tocar. */
 	zassert_ok(playback_trace_begin(clock_us()));
@@ -422,6 +426,7 @@ ZTEST(playback, test_player_falhas_e_comandos_fora_de_hora)
 	/* Selecionar outra faixa apaga o erro da anterior. */
 	zassert_equal(0, snap.load_error);
 	zassert_equal(0, snap.error_line);
+	zassert_equal(0, snap.error_column);
 
 	/* Tocar/pausar durante a carga é ignorado. */
 	zassert_ok(cmd_post(CMD_SELECT, 0));
