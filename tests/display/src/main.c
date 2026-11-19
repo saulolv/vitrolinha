@@ -449,7 +449,17 @@ ZTEST(display, test_lista_e_mini_player_cabem_na_tela_sem_se_sobrepor)
 		     "rodape sobre a barra");
 	zassert_true(lv_obj_get_height(ui.mini_row) >= line, "rodape corta o texto");
 	zassert_equal(64, lv_obj_get_y(ui.mini_row) + lv_obj_get_height(ui.mini_row));
-	zassert_equal(128, lv_obj_get_width(ui.mini_bar));
+
+	/* A barra do mini-player é a da reprodução, mais baixa: mesma largura,
+	 * centralizada.
+	 */
+	int32_t x = lv_obj_get_x(ui.mini_bar);
+	int32_t width = lv_obj_get_width(ui.mini_bar);
+
+	lv_obj_update_layout(ui.playback);
+	zassert_equal(lv_obj_get_width(ui.bar), width);
+	zassert_true(width < 128, "barra sem margem");
+	zassert_within(128 - (x + width), x, 1, "barra fora do centro");
 }
 
 ZTEST(display, test_mini_player_mostra_a_faixa_sem_sair_da_lista)

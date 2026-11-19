@@ -104,8 +104,8 @@ static const struct device *const input_dev = DEVICE_DT_GET(INPUT_NODE);
 /*
  * Geometria da biblioteca, de cima para baixo, nos 64 px da tela. A linha da
  * UNSCII-8 tem 9 px — 8 de glifo e 1 de respiro —, então a lista dispensa
- * espaçamento extra: 5 linhas x 9 px = 45 px, 3 px de folga, a barra de 4 px,
- * mais 3 de folga e o rodapé de 9 px. O teste de geometria do display confere
+ * espaçamento extra: 5 linhas x 9 px = 45 px, 2 px de folga, a barra de 6 px,
+ * mais 2 de folga e o rodapé de 9 px. O teste de geometria do display confere
  * a soma.
  */
 
@@ -113,10 +113,13 @@ static const struct device *const input_dev = DEVICE_DT_GET(INPUT_NODE);
 #define ROW_LINE_SPACE 0
 
 /** @brief Altura da barra do mini-player, que também separa lista e rodapé. */
-#define MINI_BAR_HEIGHT 4
+#define MINI_BAR_HEIGHT 6
 
 /** @brief Folga entre a barra e o que está acima e abaixo dela. */
-#define MINI_BAR_GAP 3
+#define MINI_BAR_GAP 2
+
+/** @brief Altura da barra da tela de reprodução, que tem espaço de sobra. */
+#define PLAYBACK_BAR_HEIGHT 8
 
 /** @brief Altura do rodapé do mini-player: uma linha da fonte. */
 #define MINI_ROW_HEIGHT 9
@@ -659,46 +662,44 @@ static lv_obj_t *screen_create(void)
 }
 
 /**
+ * @brief Barra de progresso no visual das duas telas.
+ *
+ * O do tema mono, com as pontas arredondadas e 90% da largura. Um contorno
+ * quadrado na largura toda foi tentado no mini-player e ficou pesado no
+ * OLED; esta é a barra que já estava em uso, agora a mesma nos dois lugares.
+ */
+static lv_obj_t *progress_bar_create(lv_obj_t *parent, int32_t height)
+{
+	static lv_style_t style_bar;
+	static bool styled;
+
+	if (!styled) {
+		lv_style_init(&style_bar);
+		lv_style_set_radius(&style_bar, 12);
+		styled = true;
+	}
+
+	lv_obj_t *created = lv_bar_create(parent);
+
+	lv_obj_add_style(created, &style_bar, LV_PART_MAIN);
+	lv_obj_set_size(created, lv_pct(90), height);
+	lv_bar_set_range(created, 0, BAR_MAX);
+
+	return created;
+}
+
+/**
  * @brief Mini-player no rodapé da biblioteca: barra e, abaixo, uma linha.
  *
  * ```
  *   ESCALA          <- última linha da lista
- *  [=======-------]  <- progresso, que também separa lista e rodapé
+ *  (=======-------)  <- progresso, que também separa lista e rodapé
  *  > PAUSAS    0:42  <- ícone, nome, decorrido
  * ```
  */
 static void mini_build(void)
 {
-	static lv_style_t style_bar;
-	static lv_style_t style_indicator;
-	static bool styled;
-
-	if (!styled) {
-		/* Contorno na cor do texto e preenchimento cheio: vazia, a barra
-		 * ainda é uma linha que separa a lista do rodapé.
-		 */
-		lv_style_init(&style_bar);
-		lv_style_set_bg_color(&style_bar, lv_color_white());
-		lv_style_set_bg_opa(&style_bar, LV_OPA_COVER);
-		lv_style_set_border_color(&style_bar, lv_color_black());
-		lv_style_set_border_width(&style_bar, 1);
-		lv_style_set_border_opa(&style_bar, LV_OPA_COVER);
-		lv_style_set_radius(&style_bar, 0);
-		lv_style_set_pad_all(&style_bar, 0);
-
-		lv_style_init(&style_indicator);
-		lv_style_set_bg_color(&style_indicator, lv_color_black());
-		lv_style_set_bg_opa(&style_indicator, LV_OPA_COVER);
-		lv_style_set_radius(&style_indicator, 0);
-
-		styled = true;
-	}
-
-	mini_bar = lv_bar_create(library_screen);
-	lv_obj_add_style(mini_bar, &style_bar, LV_PART_MAIN);
-	lv_obj_add_style(mini_bar, &style_indicator, LV_PART_INDICATOR);
-	lv_obj_set_size(mini_bar, LV_HOR_RES, MINI_BAR_HEIGHT);
-	lv_bar_set_range(mini_bar, 0, BAR_MAX);
+	mini_bar = progress_bar_create(library_screen, MINI_BAR_HEIGHT);
 	lv_obj_align(mini_bar, LV_ALIGN_BOTTOM_MID, 0, -(MINI_ROW_HEIGHT + MINI_BAR_GAP));
 
 	lv_obj_t *row = lv_obj_create(library_screen);
@@ -795,15 +796,6 @@ static lv_obj_t *playback_label(void)
 
 static void playback_build(void)
 {
-	static lv_style_t style_bar;
-	static bool styled;
-
-	if (!styled) {
-		lv_style_init(&style_bar);
-		lv_style_set_radius(&style_bar, 12);
-		styled = true;
-	}
-
 	playback_screen = screen_create();
 	lv_obj_set_flex_flow(playback_screen, LV_FLEX_FLOW_COLUMN);
 	lv_obj_set_flex_align(playback_screen, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
@@ -819,10 +811,7 @@ static void playback_build(void)
 	state_label = playback_label();
 	time_label = playback_label();
 
-	bar = lv_bar_create(playback_screen);
-	lv_obj_set_size(bar, lv_pct(90), 8);
-	lv_bar_set_range(bar, 0, BAR_MAX);
-	lv_obj_add_style(bar, &style_bar, LV_PART_MAIN);
+	bar = progress_bar_create(playback_screen, PLAYBACK_BAR_HEIGHT);
 
 	lv_obj_add_event_cb(playback_screen, playback_input_cb, LV_EVENT_KEY, NULL);
 	lv_obj_add_event_cb(playback_screen, playback_input_cb, LV_EVENT_CLICKED, NULL);
