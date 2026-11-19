@@ -288,6 +288,22 @@ static void refresh_timer_cb(lv_timer_t *timer) {
 
     snapshot_read(&snap);
 
+    /* Rastro de bancada: cada mudança de estado publicada pelo player sai
+     * no console. Daqui, e não do player, porque é a thread de baixa
+     * prioridade que já lê o instantâneo.
+     */
+    static struct player_snapshot logged = SNAPSHOT_IDLE_INITIALIZER;
+
+    if ((snap.state != logged.state) || (snap.track != logged.track) ||
+        (snap.load_error != logged.load_error) ||
+        ((snap.state == PLAYER_PLAYING) && (snap.base_us != logged.base_us))) {
+        LOG_INF("Player: estado %d, faixa %d, %u/%u ms, erro %d (linha %u)",
+                snap.state, snap.track,
+                snapshot_elapsed_us(&snap, now_us) / 1000U,
+                snap.total_us / 1000U, snap.load_error, snap.error_line);
+        logged = snap;
+    }
+
     lv_bar_set_value(bar, snapshot_progress_permille(&snap, now_us),
                      LV_ANIM_OFF);
 
