@@ -497,8 +497,11 @@ placa** — guardando a única coisa que o `storage` não sabe: se algum cartão
 leu desde o boot. Na carga, `-EFBIG`/`-ENOENT` são culpa do arquivo (a faixa
 ganha `!`) e `-ENODEV`/`-EIO` são culpa do cartão (a lista inteira cai).
 Seguinte/anterior desabilitados é o `library_neighbor` devolvendo `TRACK_NONE`,
-lido sem trava pelo `player`. A varredura roda no observador do `card`, na
-thread do monitor — ver a [ADR
+lido sem trava pelo `player`. O `loader` carrega por `library_load` e marca a
+recusa do parser com `library_reject`; a `ui` relê a lista quando a
+`library_generation` muda e, sem cartão, mostra o estado na primeira linha.
+Ninguém além da `library` varre ou carrega pelo `storage`. A varredura roda no observador do
+`card`, na thread do monitor — ver a [ADR
 0010](docs/adr/0010-a-biblioteca-e-dona-da-matriz-de-falhas.md).
 
 **Remontagem a quente não é confiável e não deve ser prometida.** A issue #94033

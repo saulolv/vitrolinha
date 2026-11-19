@@ -17,14 +17,17 @@
  * alterna entre as duas. O transporte não depende da tela: os botões de
  * tocar, anterior e seguinte valem nas duas.
  *
- * A lista sai de @ref storage_scan e o resto, de @ref snapshot_read. Nada
+ * A lista sai de @ref library_copy e o resto, de @ref snapshot_read. Nada
  * aqui sabe quem responde ao @ref storage.h — cartão na placa, faixas
  * embutidas ou pasta do computador no simulador — nem se há um player de
- * verdade do outro lado do instantâneo.
+ * verdade do outro lado do instantâneo. A lista é relida quando a
+ * @ref library_generation muda: o cartão entra e sai com a tela no ar, e
+ * fora de ::LIBRARY_READY a primeira linha diz o estado do cartão.
  */
 
 #include <vitrolinha/cmd.h>
 #include <vitrolinha/display.h>
+#include <vitrolinha/library.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/track.h>
@@ -183,14 +186,28 @@ static const lv_image_dsc_t icon_stop = ICON_DSC(icon_stop_map);
 /* Estado                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** @brief Biblioteca, na ordem de @ref storage_scan. Tamanho fixo. */
+/** @brief Biblioteca, na ordem de @ref library_copy. Tamanho fixo. */
 static struct track_meta library[LIBRARY_MAX];
 
-/** @brief Quantas posições de @ref library valem. Zero se a varredura falhou. */
+/** @brief Quantas posições de @ref library a lista mostra. Zero sem cartão. */
 static size_t library_count;
 
-/** @brief Erro da varredura, ou 0. Decide o texto da lista vazia. */
-static int library_error;
+/**
+ * @brief Quantos nomes de @ref library ainda valem para a faixa que toca.
+ *
+ * Só muda com uma lista nova. Com o cartão fora a lista esvazia, mas a faixa
+ * já está em RAM e segue tocando: a reprodução continua com o nome dela.
+ */
+static size_t named_count;
+
+/** @brief Estado da biblioteca na última cópia. Decide o texto da lista vazia. */
+static enum library_state library_status = LIBRARY_NO_CARD;
+
+/** @brief Geração da última cópia; ver @ref library_sync. */
+static uint32_t library_seen;
+
+/** @brief Já houve uma cópia? A geração inicial não diz nada sozinha. */
+static bool library_synced;
 
 /**
  * @brief Faixas marcadas com `!`: as que a varredura já sabe inválidas e as
@@ -247,39 +264,62 @@ static lv_timer_t *error_timer;
 /* -------------------------------------------------------------------------- */
 
 /**
- * @brief Varre a biblioteca pelo contrato do @ref storage.h.
+ * @brief Copia a biblioteca publicada, se ela mudou desde a última cópia.
  *
- * Fora do lock do LVGL: na placa a varredura lê o cartão, e o laço do LVGL
- * não tem por que esperar por ela.
+ * Não lê o cartão: quem varre é o monitor do cartão (ADR 0010), e a cópia
+ * só segura a trava da lista pelo tempo de copiar 32 entradas. Uma
+ * publicação entre ler a geração e copiar é vista de novo no quadro
+ * seguinte, porque a geração guardada é a de antes.
+ *
+ * @return true se a lista mudou.
  */
-static void library_load(void)
+static bool library_sync(void)
 {
-	size_t skipped = 0;
-	int count = storage_scan(library, ARRAY_SIZE(library), &skipped);
+	uint32_t generation = library_generation();
 
-	memset(rejected, 0, sizeof(rejected));
-
-	if (count < 0) {
-		LOG_WRN("Biblioteca indisponivel: %s (%d)", storage_error_text(count), count);
-		library_count = 0;
-		library_error = count;
-		return;
+	if (library_synced && (generation == library_seen)) {
+		return false;
 	}
 
-	library_count = (size_t)count;
-	library_error = 0;
+	library_seen = generation;
+	library_synced = true;
+	library_status = library_state();
+
+	if (library_status != LIBRARY_READY) {
+		/* Fica a lista anterior em @ref library, para o nome da faixa
+		 * que ainda toca; só a lista na tela esvazia.
+		 */
+		LOG_WRN("Biblioteca: %s", library_state_text(library_status));
+		library_count = 0U;
+		memset(rejected, 0, sizeof(rejected));
+		return true;
+	}
+
+	/* Fora de argumento inválido, que aqui não há, a cópia não falha. */
+	library_count = (size_t)library_copy(library, ARRAY_SIZE(library), NULL);
+	named_count = library_count;
 
 	/* O que a varredura já sabe inválido (cabeçalho errado, maior que o
-	 * buffer) nasce recusado; o que o parser recusar se junta na carga.
+	 * buffer) e o que o parser já recusou chegam marcados; recusas novas
+	 * se juntam pelo instantâneo, em @ref library_mark.
 	 */
+	memset(rejected, 0, sizeof(rejected));
 	for (size_t i = 0; i < library_count; i++) {
 		rejected[i] = !library[i].valid;
 	}
+
+	return true;
 }
 
 static bool track_listed(int track)
 {
 	return (track >= 0) && ((size_t)track < library_count);
+}
+
+/** @brief A faixa tem nome? Vale também com o cartão fora; ver @ref named_count. */
+static bool track_named(int track)
+{
+	return (track >= 0) && ((size_t)track < named_count);
 }
 
 /**
@@ -356,8 +396,9 @@ static void list_render(void)
 	/* Biblioteca vazia: a primeira linha diz por quê, sem destaque. */
 	if (library_count == 0U) {
 		lv_obj_remove_flag(rows[0], LV_OBJ_FLAG_HIDDEN);
-		label_set(rows[0], (library_error != 0) ? storage_error_text(library_error)
-							: "Nenhuma faixa");
+		label_set(rows[0], (library_status != LIBRARY_READY)
+					   ? library_state_text(library_status)
+					   : "Nenhuma faixa");
 	}
 
 	/* A barra de rolagem: altura proporcional à janela, posição à dela. Só
@@ -395,6 +436,27 @@ static void list_move(int step)
 		top = cursor;
 	} else if (cursor >= top + LIBRARY_ROWS) {
 		top = cursor - LIBRARY_ROWS + 1U;
+	}
+
+	list_render();
+}
+
+/**
+ * @brief Acomoda cursor e janela a uma lista nova e a redesenha.
+ *
+ * O cursor fica na mesma posição se ela ainda existe, e a janela nunca
+ * deixa linhas vazias no fim de uma lista que enche a tela. Sem lista, os
+ * dois ficam onde estavam: reinserido o mesmo cartão, o destaque volta à
+ * mesma faixa.
+ */
+static void library_fit(void)
+{
+	if (library_count > 0U) {
+		size_t last_top = (library_count > LIBRARY_ROWS)
+					  ? (library_count - LIBRARY_ROWS) : 0U;
+
+		cursor = MIN(cursor, library_count - 1U);
+		top = MIN(top, MIN(cursor, last_top));
 	}
 
 	list_render();
@@ -545,7 +607,7 @@ static void playback_update(const struct player_snapshot *snap, uint64_t now_us)
 	char text[2 * MMSS_SIZE + 3];
 
 	label_set(name_label,
-		  track_listed(snap->track) ? library[snap->track].name : NOTHING_PLAYING);
+		  track_named(snap->track) ? library[snap->track].name : NOTHING_PLAYING);
 	label_set(state_label, state_text(snap));
 
 	if (snap->load_error != 0) {
@@ -597,7 +659,7 @@ static const lv_image_dsc_t *state_icon(const struct player_snapshot *snap)
  */
 static void mini_update(const struct player_snapshot *snap, uint64_t now_us)
 {
-	bool idle = !track_listed(snap->track);
+	bool idle = !track_named(snap->track);
 	char elapsed[MMSS_SIZE];
 
 	lv_obj_set_flag(mini_icon, LV_OBJ_FLAG_HIDDEN, idle);
@@ -663,6 +725,10 @@ static void refresh_timer_cb(lv_timer_t *timer)
 		} else {
 			show_playback();
 		}
+	}
+
+	if (library_sync()) {
+		library_fit();
 	}
 
 	playback_update(&snap, now_us);
@@ -1120,7 +1186,7 @@ int display_init(void)
 	}
 
 #ifndef TEST_FPS
-	library_load();
+	(void)library_sync();
 #endif
 
 	/* A função pode rodar em paralelo com o laço periódico do LVGL; o lock

@@ -5,9 +5,13 @@
  * O lock serializa a thread e o timer. Nenhum deles lê arquivos ou interpreta
  * CSV. A thread só acorda por evento: comando na fila ou, durante a carga,
  * resultado pronto no loader.
+ *
+ * A biblioteca chega só por leituras atômicas de library.h: o player nunca
+ * espera a varredura nem a trava da lista (ADR 0010).
  */
 #include <vitrolinha/player.h>
 #include <vitrolinha/cmd.h>
+#include <vitrolinha/library.h>
 #include <vitrolinha/loader.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
@@ -44,7 +48,6 @@ static struct player_snapshot state = SNAPSHOT_IDLE_INITIALIZER;
 static struct playback_event current;
 static struct playback_event next;
 static uint32_t request_id;
-static size_t library_count;
 static bool loading;
 
 static uint64_t now_us(void)
@@ -122,25 +125,23 @@ static void handle_command(const struct cmd *command)
 	/* Sem default: cmd_post() recusa tipos desconhecidos na entrada. */
 	switch (command->kind) {
 	case CMD_SELECT:
-		if ((size_t)command->track < library_count) {
+		/* Índice além da lista chega ao loader e volta como -ENOENT. */
+		if (library_state() == LIBRARY_READY) {
 			select_track(command->track);
 		}
 		break;
 	case CMD_NEXT:
-	case CMD_PREV:
-		if (library_count > 0) {
-			int track = state.track;
+	case CMD_PREV: {
+		/* TRACK_NONE fora de ::LIBRARY_READY ou sem faixa tocável: é
+		 * isto que desliga seguinte e anterior com o cartão fora.
+		 */
+		int track = library_neighbor(state.track, command->kind == CMD_NEXT);
 
-			if (track == TRACK_NONE) {
-				track = command->kind == CMD_NEXT ? 0 : library_count - 1;
-			} else if (command->kind == CMD_NEXT) {
-				track = (track + 1) % library_count;
-			} else {
-				track = (track + library_count - 1) % library_count;
-			}
+		if (track != TRACK_NONE) {
 			select_track(track);
 		}
 		break;
+	}
 	case CMD_STOP:
 		if (loading) {
 			(void)loader_cancel(request_id);
@@ -177,8 +178,16 @@ static void handle_command(const struct cmd *command)
 			loading = true;
 			state.base_us = 0;
 			snapshot_publish(&state);
-		} else if (library_count > 0) {
-			select_track(state.track == TRACK_NONE ? 0 : state.track);
+		} else if (library_state() == LIBRARY_READY) {
+			/* Sem faixa ainda, a primeira tocável; se não há nenhuma,
+			 * o vizinho é TRACK_NONE e o comando não faz nada.
+			 */
+			int track = state.track != TRACK_NONE ? state.track
+							      : library_neighbor(TRACK_NONE, true);
+
+			if (track != TRACK_NONE) {
+				select_track(track);
+			}
 		}
 		break;
 	}
@@ -251,12 +260,8 @@ static void player_worker(void *a, void *b, void *c)
 K_THREAD_DEFINE(player_thread, PLAYER_STACK_SIZE, player_worker, NULL, NULL, NULL,
 		PLAYER_PRIORITY, 0, SYS_FOREVER_MS);
 
-int player_init(size_t track_count)
+int player_init(void)
 {
-	if (track_count > LIBRARY_MAX) {
-		return -EINVAL;
-	}
-	library_count = track_count;
 	k_timer_init(&timer, timer_expired, NULL);
 	snapshot_publish(&state);
 	k_thread_start(player_thread);

@@ -277,11 +277,11 @@ static void cmd_report(void)
  *
  * Falha aqui não derruba o `main`: a tela continua listando a biblioteca.
  *
- * @param track_count Faixas da varredura, ou erro negativo dela.
+ * O player lê a biblioteca a cada comando (library.h), e por isso não
+ * recebe a contagem: um cartão inserido depois do boot já vale para ele.
  */
-static void playback_start(int track_count)
+static void playback_start(void)
 {
-	size_t count = (track_count > 0) ? (size_t)track_count : 0U;
 	int err;
 
 	err = loader_init();
@@ -305,19 +305,15 @@ static void playback_start(int track_count)
 	}
 #endif
 
-	err = player_init(count);
+	err = player_init();
 	if (err != 0) {
 		LOG_ERR("Player nao subiu: %d", err);
-		return;
 	}
-
-	LOG_INF("Player: %zu faixa(s)", count);
 }
 #endif
 
 int main(void)
 {
-	int track_count;
 	int err;
 
 	LOG_INF("Vitrolinha %s em " CONFIG_BOARD_TARGET, APP_VERSION_STRING);
@@ -328,7 +324,7 @@ int main(void)
 	}
 
 	card_report();
-	track_count = library_report();
+	(void)library_report();
 
 	/* Os dois exercitam registros que o player toma para si ao subir. */
 	snapshot_report();
@@ -341,9 +337,7 @@ int main(void)
 	}
 
 #if defined(VITROLINHA_HAS_PLAYER)
-	playback_start(track_count);
-#else
-	ARG_UNUSED(track_count);
+	playback_start();
 #endif
 
 	LOG_INF("Bring-up completo. LED de sinal de vida piscando.");

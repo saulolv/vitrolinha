@@ -85,11 +85,26 @@ cartão varreria duas vezes, e a varredura explícita não pode faltar, porque
 no simulador o cartão nunca transita e quem responde é a implementação de
 mentira.
 
-O que fica fora deste módulo, por pertencer às trilhas de interface e
-reprodução: a tela de erro e os ~2 s de exibição do motivo (issue #30), a
-tela que aparece só ao voltar ao menu (issue #29), e o `player` deixar a
-faixa em curso terminar (issue #20) — que já é verdade por construção, porque
-a faixa está inteira em RAM.
+Os três consumidores passam pela biblioteca, e nenhum deles fala com o
+`storage` direto:
+
+- o `loader` carrega por `library_load` e, quando o parser recusa o
+  arquivo, marca a faixa com `library_reject`, levando a geração lida na
+  carga;
+- o `player` escolhe seguinte, anterior e a primeira faixa por
+  `library_neighbor`, e só aceita seleção em `LIBRARY_READY`, ambos lidos
+  sem trava. Por isso o `player_init` não recebe mais a contagem de faixas:
+  um cartão inserido depois do boot vale para ele no comando seguinte;
+- a `ui` relê a lista por `library_copy` a cada mudança de
+  `library_generation`, conferida no timer de atualização, e fora de
+  `LIBRARY_READY` a primeira linha da lista é o `library_state_text`. Com o
+  cartão fora, a faixa em curso segue tocando com o nome dela, porque a
+  `ui` guarda os nomes da última lista boa.
+
+A faixa em curso terminar com o cartão fora já é verdade por construção,
+porque ela está inteira em RAM. O que segue com as trilhas de interface
+(#29, #30) é o desenho da tela de erro em si; aqui ela é a primeira linha da
+lista.
 
 `tests/library/` cobre a lógica sobre a implementação de mentira;
 `tests/library_card/` induz as três falhas de ponta a ponta, com o monitor de

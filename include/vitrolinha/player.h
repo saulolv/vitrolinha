@@ -10,13 +10,13 @@
  * definidos são a entrada de controle. Arquivos, parser e gráficos não
  * são executados pela thread do player nem pelo callback do timer.
  *
- * Próxima/anterior circulam pela biblioteca informada na inicialização.
+ * A biblioteca é a de library.h, lida sem trava a cada comando: seleção,
+ * próxima e anterior só valem com ela em ::LIBRARY_READY, e próxima e
+ * anterior pulam as faixas recusadas e dão a volta nas pontas.
  */
 
 #ifndef VITROLINHA_PLAYER_H_
 #define VITROLINHA_PLAYER_H_
-
-#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,14 +24,12 @@ extern "C" {
 
 /**
  * @brief Prepara estado, timer e thread que consumirá a fila de comandos.
- * @param track_count Quantidade obtida por storage_scan, de 0 a LIBRARY_MAX.
  * @return 0 no sucesso ou erro negativo de inicialização.
  * @note Chamar uma vez, após loader_init() e tone_init(). O estado inicial
  *       é parado e sem faixa; fim, parada e falha silenciam a saída.
  *       A pausa preserva a nota corrente; a retomada reinicia essa nota.
- *       A quantidade da biblioteca fica fixa até encerrar a aplicação.
  */
-int player_init(size_t track_count);
+int player_init(void);
 
 #ifdef __cplusplus
 }
