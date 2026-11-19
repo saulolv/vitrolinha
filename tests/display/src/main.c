@@ -50,6 +50,11 @@ static char path[160];
 struct ui {
 	lv_obj_t *library;
 	lv_obj_t *roller;
+	lv_obj_t *mini_bar;
+	lv_obj_t *mini_row;
+	lv_obj_t *mini_icon;
+	lv_obj_t *mini_name;
+	lv_obj_t *mini_time;
 	lv_obj_t *playback;
 	lv_obj_t *name;
 	lv_obj_t *state;
@@ -136,6 +141,11 @@ static struct ui start_ui(const char *dir)
 
 	ui.library = lv_screen_active();
 	ui.roller = lv_obj_get_child(ui.library, 0);
+	ui.mini_bar = lv_obj_get_child(ui.library, 1);
+	ui.mini_row = lv_obj_get_child(ui.library, 2);
+	ui.mini_icon = lv_obj_get_child(ui.mini_row, 0);
+	ui.mini_name = lv_obj_get_child(ui.mini_row, 1);
+	ui.mini_time = lv_obj_get_child(ui.mini_row, 2);
 
 	toggle();
 	ui.playback = lv_screen_active();
@@ -149,6 +159,7 @@ static struct ui start_ui(const char *dir)
 	zassert_equal(ui.library, lv_screen_active());
 
 	zassert_not_null(ui.roller);
+	zassert_not_null(ui.mini_time);
 	zassert_not_null(ui.name);
 	zassert_not_null(ui.state);
 	zassert_not_null(ui.time);
@@ -184,6 +195,20 @@ static void publish_error(int16_t track, int16_t err, uint16_t line)
 static uint64_t now_us(void)
 {
 	return k_ticks_to_us_floor64(k_uptime_ticks());
+}
+
+/** @brief Uma linha do ícone do mini-player: distingue tocar, pausar e parar. */
+static uint8_t icon_row(lv_obj_t *icon, size_t row)
+{
+	const lv_image_dsc_t *dsc = lv_image_get_src(icon);
+
+	/* Depois dos 8 bytes de paleta, um byte por linha. */
+	return dsc->data[8U + row];
+}
+
+static bool hidden(lv_obj_t *obj)
+{
+	return lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void expect_no_cmd(void)
@@ -396,6 +421,88 @@ ZTEST(display, test_marcador_segue_a_faixa_sem_mover_o_foco)
 	publish(PLAYER_STOPPED, TRACK_NONE, 0U, 0U);
 	refresh();
 	zassert_str_equal("  a\n  b\n  c", lv_roller_get_options(ui.roller));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Mini-player                                                                */
+/* -------------------------------------------------------------------------- */
+
+ZTEST(display, test_lista_e_mini_player_cabem_na_tela_sem_se_sobrepor)
+{
+	struct ui ui = start_ui("tres");
+
+	int32_t line = lv_font_get_line_height(lv_obj_get_style_text_font(ui.roller, 0));
+
+	lv_obj_update_layout(ui.library);
+
+	/* Cinco linhas inteiras da fonte no alto, a barra abaixo da lista, o
+	 * rodapé abaixo da barra com altura para uma linha sem cortar, e tudo
+	 * dentro dos 64 px. Foi este teste que mostrou que a linha da UNSCII-8
+	 * tem 9 px, e não 8: com 2 px de espaçamento a lista invadia a barra.
+	 */
+	zassert_equal(0, lv_obj_get_y(ui.roller));
+	zassert_equal(5 * line, lv_obj_get_height(ui.roller), "linha de %d px", line);
+	zassert_true(lv_obj_get_y(ui.mini_bar) > lv_obj_get_height(ui.roller),
+		     "barra sobre a lista");
+	zassert_true(lv_obj_get_y(ui.mini_row) >
+		     lv_obj_get_y(ui.mini_bar) + lv_obj_get_height(ui.mini_bar),
+		     "rodape sobre a barra");
+	zassert_true(lv_obj_get_height(ui.mini_row) >= line, "rodape corta o texto");
+	zassert_equal(64, lv_obj_get_y(ui.mini_row) + lv_obj_get_height(ui.mini_row));
+	zassert_equal(128, lv_obj_get_width(ui.mini_bar));
+}
+
+ZTEST(display, test_mini_player_mostra_a_faixa_sem_sair_da_lista)
+{
+	struct ui ui = start_ui("tres");
+
+	/* Sem faixa: só o convite, sem ícone nem tempo. */
+	zassert_str_equal("Escolha a faixa", lv_label_get_text(ui.mini_name));
+	zassert_true(hidden(ui.mini_icon));
+	zassert_true(hidden(ui.mini_time));
+	zassert_equal(0, lv_bar_get_value(ui.mini_bar));
+
+	publish(PLAYER_PLAYING, 1, now_us(), 200U * USEC_PER_MSEC);
+	refresh();
+	zassert_equal(ui.library, lv_screen_active(), "o mini-player nao troca de tela");
+	zassert_false(hidden(ui.mini_icon));
+	zassert_false(hidden(ui.mini_time));
+	zassert_str_equal("b", lv_label_get_text(ui.mini_name));
+	zassert_str_equal("0:00", lv_label_get_text(ui.mini_time));
+	zassert_equal(0x60, icon_row(ui.mini_icon, 1), "esperava o icone de tocar");
+	zassert_within(lv_bar_get_value(ui.mini_bar), 550, 50);
+
+	/* A barra anda pelo relógio, e o ícone, igual, não é trocado. */
+	refresh();
+	zassert_true(lv_bar_get_value(ui.mini_bar) > 900);
+	zassert_equal(0x60, icon_row(ui.mini_icon, 1));
+
+	publish(PLAYER_PAUSED, 1, 62U * USEC_PER_SEC, 125U * USEC_PER_SEC);
+	refresh();
+	zassert_str_equal("1:02", lv_label_get_text(ui.mini_time));
+	zassert_equal(0x6c, icon_row(ui.mini_icon, 1), "esperava o icone de pausa");
+	zassert_equal(496, lv_bar_get_value(ui.mini_bar));
+
+	publish(PLAYER_STOPPED, 1, 125U * USEC_PER_SEC, 125U * USEC_PER_SEC);
+	refresh();
+	zassert_str_equal("2:05", lv_label_get_text(ui.mini_time));
+	zassert_equal(0x7c, icon_row(ui.mini_icon, 1), "esperava o icone de parado");
+	zassert_equal(1000, lv_bar_get_value(ui.mini_bar));
+
+	/* Carga recusada: o motivo é da tela de reprodução; aqui, só o aviso. */
+	publish_error(2, -EINVAL, 3U);
+	refresh();
+	zassert_str_equal("c", lv_label_get_text(ui.mini_name));
+	zassert_str_equal("erro", lv_label_get_text(ui.mini_time));
+	zassert_equal(0x7c, icon_row(ui.mini_icon, 1));
+	zassert_equal(0, lv_bar_get_value(ui.mini_bar));
+
+	publish(PLAYER_STOPPED, TRACK_NONE, 0U, 0U);
+	refresh();
+	zassert_str_equal("Escolha a faixa", lv_label_get_text(ui.mini_name));
+	zassert_true(hidden(ui.mini_icon));
+	zassert_true(hidden(ui.mini_time));
+	zassert_equal(0, lv_bar_get_value(ui.mini_bar));
 }
 
 /* -------------------------------------------------------------------------- */

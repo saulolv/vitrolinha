@@ -4,11 +4,13 @@
  *
  * Duas telas, como a especificação pede:
  *
- * - **Biblioteca**: a lista inteira no roller. O destaque é o foco, que só o
- *   encoder move; a faixa do instantâneo leva `>`, e a recusada leva `!`.
- *   Foco e marcador são coisas diferentes de propósito: trocar de faixa pelos
- *   botões não mexe no foco de quem está navegando.
- * - **Reprodução**: nome, estado, tempo decorrido e total, e a barra.
+ * - **Biblioteca**: a lista no roller e, no rodapé, um mini-player. O
+ *   destaque é o foco, que só o encoder move; a faixa do instantâneo leva
+ *   `>`, e a recusada leva `!`. Foco e marcador são coisas diferentes de
+ *   propósito: trocar de faixa pelos botões não mexe no foco de quem está
+ *   navegando. O mini-player mostra o que toca sem sair da lista.
+ * - **Reprodução**: a visão detalhada — nome, estado, tempo decorrido e
+ *   total, a barra e o motivo de uma carga recusada.
  *
  * Clicar numa faixa a toca e abre a reprodução. Na reprodução, girar ou
  * clicar o encoder volta à biblioteca; o botão ::DISPLAY_TOGGLE_BUTTON
@@ -96,6 +98,77 @@ static const struct device *const input_dev = DEVICE_DT_GET(INPUT_NODE);
 /** @brief Texto do rótulo de nome quando o instantâneo não tem faixa. */
 #define NOTHING_PLAYING "Nada tocando"
 
+/** @brief O mini-player sem faixa: cabe nas 16 colunas, e diz o que fazer. */
+#define CHOOSE_TRACK "Escolha a faixa"
+
+/*
+ * Geometria da biblioteca, de cima para baixo, nos 64 px da tela. A linha da
+ * UNSCII-8 tem 9 px — 8 de glifo e 1 de respiro —, então a lista dispensa
+ * espaçamento extra: 5 linhas x 9 px = 45 px, 3 px de folga, a barra de 4 px,
+ * mais 3 de folga e o rodapé de 9 px. O teste de geometria do display confere
+ * a soma.
+ */
+
+/** @brief Espaço extra entre as linhas do roller: nenhum, ver acima. */
+#define ROW_LINE_SPACE 0
+
+/** @brief Altura da barra do mini-player, que também separa lista e rodapé. */
+#define MINI_BAR_HEIGHT 4
+
+/** @brief Folga entre a barra e o que está acima e abaixo dela. */
+#define MINI_BAR_GAP 3
+
+/** @brief Altura do rodapé do mini-player: uma linha da fonte. */
+#define MINI_ROW_HEIGHT 9
+
+/* -------------------------------------------------------------------------- */
+/* Ícones                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Ícones de estado, 7x7, em 1 bit indexado. A UNSCII-8 só tem ASCII, sem os
+ * símbolos de tocar e pausar, e desenhar à mão custa quinze bytes por ícone.
+ *
+ * A paleta vem antes dos pixels, em lv_color32_t (azul, verde, vermelho,
+ * alfa): índice 0 transparente, índice 1 na cor do texto. Cada linha é um
+ * byte, o pixel da esquerda no bit mais alto.
+ */
+#define ICON_SIZE    7
+#define ICON_PALETTE 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff
+
+static const uint8_t icon_play_map[] = {
+	ICON_PALETTE,
+	0x40, /* .X..... */
+	0x60, /* .XX.... */
+	0x70, /* .XXX... */
+	0x78, /* .XXXX.. */
+	0x70, /* .XXX... */
+	0x60, /* .XX.... */
+	0x40, /* .X..... */
+};
+
+static const uint8_t icon_pause_map[] = {
+	ICON_PALETTE, 0x6c, 0x6c, 0x6c, 0x6c, 0x6c, 0x6c, 0x6c, /* .XX.XX. */
+};
+
+static const uint8_t icon_stop_map[] = {
+	ICON_PALETTE, 0x00, 0x7c, 0x7c, 0x7c, 0x7c, 0x7c, 0x00, /* .XXXXX. */
+};
+
+#define ICON_DSC(map)                                                                      \
+	{                                                                                  \
+		.header = {.magic = LV_IMAGE_HEADER_MAGIC,                                 \
+			   .cf = LV_COLOR_FORMAT_I1,                                       \
+			   .w = ICON_SIZE,                                                 \
+			   .h = ICON_SIZE,                                                 \
+			   .stride = 1},                                                   \
+		.data_size = sizeof(map), .data = (map),                                   \
+	}
+
+static const lv_image_dsc_t icon_play = ICON_DSC(icon_play_map);
+static const lv_image_dsc_t icon_pause = ICON_DSC(icon_pause_map);
+static const lv_image_dsc_t icon_stop = ICON_DSC(icon_stop_map);
+
 /* -------------------------------------------------------------------------- */
 /* Estado                                                                     */
 /* -------------------------------------------------------------------------- */
@@ -129,6 +202,12 @@ static lv_indev_t *indev;
 static lv_obj_t *library_screen;
 static lv_obj_t *roller;
 static lv_group_t *library_group;
+
+/* Mini-player no rodapé da biblioteca. */
+static lv_obj_t *mini_bar;
+static lv_obj_t *mini_icon;
+static lv_obj_t *mini_name;
+static lv_obj_t *mini_time;
 
 static lv_obj_t *playback_screen;
 static lv_obj_t *name_label;
@@ -359,10 +438,21 @@ static const char *state_text(const struct player_snapshot *snap)
 	}
 }
 
+/** @brief Tamanho de um tempo `m:ss`; o maior, 71582:47, vem de 32 bits de µs. */
+#define MMSS_SIZE 12
+
+/** @brief Escreve @p us como `m:ss`, em minutos e segundos inteiros. */
+static void format_mmss(char out[MMSS_SIZE], uint32_t us)
+{
+	uint32_t s = us / USEC_PER_SEC;
+
+	snprintf(out, MMSS_SIZE, "%u:%02u", s / 60U, s % 60U);
+}
+
 /** @brief Copia o instantâneo para os rótulos e a barra da reprodução. */
 static void playback_update(const struct player_snapshot *snap, uint64_t now_us)
 {
-	char text[32];
+	char text[2 * MMSS_SIZE + 3];
 
 	label_set(name_label,
 		  track_listed(snap->track) ? library[snap->track].name : NOTHING_PLAYING);
@@ -376,15 +466,72 @@ static void playback_update(const struct player_snapshot *snap, uint64_t now_us)
 			text[0] = '\0';
 		}
 	} else {
-		uint32_t elapsed_s = snapshot_elapsed_us(snap, now_us) / USEC_PER_SEC;
-		uint32_t total_s = snap->total_us / USEC_PER_SEC;
+		char elapsed[MMSS_SIZE];
+		char total[MMSS_SIZE];
 
-		snprintf(text, sizeof(text), "%u:%02u / %u:%02u", elapsed_s / 60U,
-			 elapsed_s % 60U, total_s / 60U, total_s % 60U);
+		format_mmss(elapsed, snapshot_elapsed_us(snap, now_us));
+		format_mmss(total, snap->total_us);
+		snprintf(text, sizeof(text), "%s / %s", elapsed, total);
 	}
 	label_set(time_label, text);
 
 	lv_bar_set_value(bar, snapshot_progress_permille(snap, now_us), LV_ANIM_OFF);
+}
+
+/** @brief Ícone do estado; a carga recusada aparece como parada. */
+static const lv_image_dsc_t *state_icon(const struct player_snapshot *snap)
+{
+	if (snap->load_error != 0) {
+		return &icon_stop;
+	}
+
+	switch (snap->state) {
+	case PLAYER_PLAYING:
+		return &icon_play;
+	case PLAYER_PAUSED:
+		return &icon_pause;
+	default:
+		return &icon_stop;
+	}
+}
+
+/**
+ * @brief Copia o instantâneo para o mini-player do rodapé da biblioteca.
+ *
+ * Ícone, nome e decorrido numa linha só: o total e o motivo de um erro ficam
+ * para a tela de reprodução, que tem espaço para eles. Sem faixa, o ícone e
+ * o tempo somem, e o nome, que cresce no lugar deles, diz o que fazer.
+ */
+static void mini_update(const struct player_snapshot *snap, uint64_t now_us)
+{
+	bool idle = !track_listed(snap->track);
+	char elapsed[MMSS_SIZE];
+
+	lv_obj_set_flag(mini_icon, LV_OBJ_FLAG_HIDDEN, idle);
+	lv_obj_set_flag(mini_time, LV_OBJ_FLAG_HIDDEN, idle);
+
+	if (idle) {
+		label_set(mini_name, CHOOSE_TRACK);
+		lv_bar_set_value(mini_bar, 0, LV_ANIM_OFF);
+		return;
+	}
+
+	const lv_image_dsc_t *icon = state_icon(snap);
+
+	if (lv_image_get_src(mini_icon) != icon) {
+		lv_image_set_src(mini_icon, icon);
+	}
+
+	label_set(mini_name, library[snap->track].name);
+
+	if (snap->load_error != 0) {
+		label_set(mini_time, "erro");
+	} else {
+		format_mmss(elapsed, snapshot_elapsed_us(snap, now_us));
+		label_set(mini_time, elapsed);
+	}
+
+	lv_bar_set_value(mini_bar, snapshot_progress_permille(snap, now_us), LV_ANIM_OFF);
 }
 
 /**
@@ -425,6 +572,7 @@ static void refresh_timer_cb(lv_timer_t *timer)
 	}
 
 	playback_update(&snap, now_us);
+	mini_update(&snap, now_us);
 	library_mark(&snap);
 
 	/* A tela de erro é a própria reprodução mostrando o motivo; depois de
@@ -510,6 +658,78 @@ static lv_obj_t *screen_create(void)
 	return screen;
 }
 
+/**
+ * @brief Mini-player no rodapé da biblioteca: barra e, abaixo, uma linha.
+ *
+ * ```
+ *   ESCALA          <- última linha da lista
+ *  [=======-------]  <- progresso, que também separa lista e rodapé
+ *  > PAUSAS    0:42  <- ícone, nome, decorrido
+ * ```
+ */
+static void mini_build(void)
+{
+	static lv_style_t style_bar;
+	static lv_style_t style_indicator;
+	static bool styled;
+
+	if (!styled) {
+		/* Contorno na cor do texto e preenchimento cheio: vazia, a barra
+		 * ainda é uma linha que separa a lista do rodapé.
+		 */
+		lv_style_init(&style_bar);
+		lv_style_set_bg_color(&style_bar, lv_color_white());
+		lv_style_set_bg_opa(&style_bar, LV_OPA_COVER);
+		lv_style_set_border_color(&style_bar, lv_color_black());
+		lv_style_set_border_width(&style_bar, 1);
+		lv_style_set_border_opa(&style_bar, LV_OPA_COVER);
+		lv_style_set_radius(&style_bar, 0);
+		lv_style_set_pad_all(&style_bar, 0);
+
+		lv_style_init(&style_indicator);
+		lv_style_set_bg_color(&style_indicator, lv_color_black());
+		lv_style_set_bg_opa(&style_indicator, LV_OPA_COVER);
+		lv_style_set_radius(&style_indicator, 0);
+
+		styled = true;
+	}
+
+	mini_bar = lv_bar_create(library_screen);
+	lv_obj_add_style(mini_bar, &style_bar, LV_PART_MAIN);
+	lv_obj_add_style(mini_bar, &style_indicator, LV_PART_INDICATOR);
+	lv_obj_set_size(mini_bar, LV_HOR_RES, MINI_BAR_HEIGHT);
+	lv_bar_set_range(mini_bar, 0, BAR_MAX);
+	lv_obj_align(mini_bar, LV_ALIGN_BOTTOM_MID, 0, -(MINI_ROW_HEIGHT + MINI_BAR_GAP));
+
+	lv_obj_t *row = lv_obj_create(library_screen);
+
+	lv_obj_remove_style_all(row);
+	lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+	lv_obj_set_size(row, LV_HOR_RES, MINI_ROW_HEIGHT);
+	lv_obj_align(row, LV_ALIGN_BOTTOM_MID, 0, 0);
+	lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+	lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+			      LV_FLEX_ALIGN_CENTER);
+	lv_obj_set_style_pad_column(row, 3, 0);
+
+	mini_icon = lv_image_create(row);
+	lv_image_set_src(mini_icon, &icon_stop);
+
+	/* O nome cresce até o tempo; um nome comprido termina em reticências
+	 * e o tempo continua à vista.
+	 */
+	mini_name = lv_label_create(row);
+	lv_obj_set_flex_grow(mini_name, 1);
+	lv_label_set_long_mode(mini_name, LV_LABEL_LONG_MODE_DOTS);
+	lv_label_set_text(mini_name, CHOOSE_TRACK);
+
+	mini_time = lv_label_create(row);
+	lv_label_set_text(mini_time, "");
+
+	lv_obj_add_flag(mini_icon, LV_OBJ_FLAG_HIDDEN);
+	lv_obj_add_flag(mini_time, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void library_build(void)
 {
 	static lv_style_t style_main;
@@ -519,10 +739,11 @@ static void library_build(void)
 	if (!styled) {
 		lv_style_init(&style_main);
 		lv_style_set_bg_color(&style_main, lv_color_hex(0xffffff));
-		lv_style_set_border_opa(&style_main, 0);
+		lv_style_set_border_width(&style_main, 0);
 		lv_style_set_radius(&style_main, 0);
+		lv_style_set_pad_ver(&style_main, 0);
 		lv_style_set_text_color(&style_main, lv_color_hex(0x000000));
-		lv_style_set_text_line_space(&style_main, 2);
+		lv_style_set_text_line_space(&style_main, ROW_LINE_SPACE);
 		/* À esquerda, para os marcadores formarem uma coluna. */
 		lv_style_set_text_align(&style_main, LV_TEXT_ALIGN_LEFT);
 
@@ -536,12 +757,15 @@ static void library_build(void)
 
 	library_screen = screen_create();
 
+	/* A lista no alto e o mini-player embaixo; ver a geometria no topo. */
 	roller = lv_roller_create(library_screen);
 	lv_obj_add_style(roller, &style_main, LV_PART_MAIN);
 	lv_obj_add_style(roller, &style_selected, LV_PART_SELECTED);
 	lv_obj_set_width(roller, LV_HOR_RES);
 	lv_roller_set_visible_row_count(roller, LIBRARY_ROWS);
-	lv_obj_center(roller);
+	lv_obj_align(roller, LV_ALIGN_TOP_MID, 0, 0);
+
+	mini_build();
 
 	marked_track = TRACK_NONE;
 	library_options(marked_track);
