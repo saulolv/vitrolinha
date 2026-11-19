@@ -491,12 +491,26 @@ Três falhas distintas, com comportamento definido para cada.
 | Cartão removido tocando | **A música termina**, porque o arquivo já está inteiro em RAM e nem o `player` nem o callback tocam no sistema de arquivos. A biblioteca é marcada inválida, seguinte/anterior são desabilitados, e ao voltar ao menu aparece a tela de erro |
 | Arquivo inválido | O `parser` rejeita, tela de erro com o motivo por ~2 s, volta à biblioteca, item marcado com `!` |
 
+A matriz mora no módulo `library` (`src/library.c`), e em nenhum outro lugar.
+Ele separa cinco estados — sem cartão, pronto, removido, ilegível e **reinicie a
+placa** — guardando a única coisa que o `storage` não sabe: se algum cartão já
+leu desde o boot. Na carga, `-EFBIG`/`-ENOENT` são culpa do arquivo (a faixa
+ganha `!`) e `-ENODEV`/`-EIO` são culpa do cartão (a lista inteira cai).
+Seguinte/anterior desabilitados é o `library_neighbor` devolvendo `TRACK_NONE`,
+lido sem trava pelo `player`. O `loader` carrega por `library_load` e marca a
+recusa do parser com `library_reject`; a `ui` relê a lista quando a
+`library_generation` muda e, sem cartão, mostra o estado na primeira linha.
+Ninguém além da `library` varre ou carrega pelo `storage`. A varredura roda no observador do
+`card`, na thread do monitor — ver a [ADR
+0010](docs/adr/0010-a-biblioteca-e-dona-da-matriz-de-falhas.md).
+
 **Remontagem a quente não é confiável e não deve ser prometida.** A issue #94033
 do Zephyr, "SD card hot-plug not supported", está **fechada como "not
 planned"**: `fs_mount()` devolve `-EIO` na reinserção, com atrasos de 14+
 segundos relatados na tentativa de desmontar. A aplicação **tenta**
 `fs_unmount`/`fs_mount` na reinserção porque custa pouco e às vezes funciona, e
-cai para "reinicie a placa" quando falha. O RNF07 é redigido como "sem
+cai para "reinicie a placa" quando falha — que é o `LIBRARY_REBOOT`: cartão que
+não lê depois de um outro já ter lido. O RNF07 é redigido como "sem
 travamento", que é o que a espec sempre disse, e não "com recuperação", que ela
 nunca prometeu.
 

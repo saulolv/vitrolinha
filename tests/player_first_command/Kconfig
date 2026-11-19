@@ -1,12 +1,14 @@
 # Parâmetros dos cenários deste teste, um por processo (ver testcase.yaml).
 #
 # O que se testa aqui só acontece uma vez por processo: o player começa sem
-# faixa, e player_init() fixa o tamanho da biblioteca até o fim. Cada cenário
-# é por isso um binário próprio.
+# faixa uma vez. Cada cenário é por isso um binário próprio.
 
-config TEST_LIBRARY_COUNT
-	int "Faixas informadas a player_init()"
-	default 3
+config TEST_CARD
+	bool "Varrer a biblioteca de mentira, de duas faixas, antes do comando"
+	default y
+
+config TEST_REJECT_ALL
+	bool "Recusar as duas faixas depois de varrer, como se o parser as rejeitasse"
 
 config TEST_FIRST_COMMAND
 	int "Primeiro comando, como valor de enum cmd_kind"

@@ -4,7 +4,8 @@
  *
  * A interface roda sobre um display de teste e um keypad que recebe teclas
  * pelo subsistema `input`, como no simulador. A biblioteca é uma pasta
- * temporária lida pelo `storage_host`, e o "player" é o próprio teste,
+ * temporária lida pelo `storage_host` através da `library`, e o "player" é
+ * o próprio teste,
  * publicando instantâneos. O laço do LVGL também é do teste: nada roda sem
  * lv_timer_handler() ou lv_indev_read().
  */
@@ -12,6 +13,7 @@
 
 #include <vitrolinha/cmd.h>
 #include <vitrolinha/display.h>
+#include <vitrolinha/library.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/track.h>
@@ -134,6 +136,20 @@ static void toggle(void)
 }
 
 /**
+ * @brief Aponta a biblioteca para @p dir e a varre, como o monitor do
+ *        cartão faria numa inserção.
+ *
+ * @param dir Subpasta do diretório temporário; pode não existir, e aí a
+ *            varredura é a de um soquete vazio.
+ */
+static void insert_card(const char *dir)
+{
+	make_path(dir, NULL);
+	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", path, 1));
+	(void)library_refresh();
+}
+
+/**
  * @brief Aponta a biblioteca para @p dir e remonta as telas do zero.
  *
  * Passa pela reprodução para guardar os objetos dela, e volta: a interface
@@ -146,8 +162,7 @@ static struct ui start_ui(const char *dir)
 {
 	struct ui ui;
 
-	make_path(dir, NULL);
-	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", path, 1));
+	insert_card(dir);
 	zassert_ok(display_init());
 
 	ui.library = lv_screen_active();
@@ -369,6 +384,8 @@ static void before(void *fixture)
 	snapshot_publish(&idle);
 	cmd_flush();
 	fake_display_set_blanking_off_result(0);
+	/* Cada caso começa do boot: nenhum cartão lido ainda. */
+	library_reset();
 }
 
 ZTEST_SUITE(display, NULL, setup, before, NULL, teardown);
@@ -389,11 +406,72 @@ ZTEST(display, test_lista_as_faixas_da_varredura_em_ordem)
 	zassert_equal(0, lv_bar_get_value(ui.bar));
 }
 
-ZTEST(display, test_biblioteca_ausente_mostra_o_erro_da_varredura)
+ZTEST(display, test_biblioteca_ausente_mostra_o_estado_do_cartao)
 {
 	struct ui ui = start_ui("nao-existe");
 
-	zassert_str_equal(storage_error_text(-ENODEV), list_text(&ui));
+	zassert_str_equal(library_state_text(LIBRARY_NO_CARD), list_text(&ui));
+}
+
+ZTEST(display, test_cartao_entra_e_sai_com_a_tela_no_ar)
+{
+	struct ui ui = start_ui("nao-existe");
+
+	/* Inserido depois do boot: a lista aparece sem remontar as telas. */
+	insert_card("tres");
+	refresh();
+	zassert_str_equal("  a\n  b\n  c", list_text(&ui));
+
+	/* Removido tocando: a lista diz por quê, e a faixa em RAM segue com
+	 * o nome dela na reprodução e no mini-player.
+	 */
+	tap(INPUT_KEY_RIGHT);
+	publish(PLAYER_PLAYING, 1, now_us(), USEC_PER_SEC);
+	refresh();
+	insert_card("nao-existe");
+	refresh();
+	zassert_str_equal(library_state_text(LIBRARY_REMOVED), list_text(&ui));
+	zassert_str_equal("b", lv_label_get_text(ui.name));
+	zassert_str_equal("b", lv_label_get_text(ui.mini_name));
+
+	/* Sem lista, o clique não pede nada. */
+	tap(INPUT_KEY_ENTER);
+	expect_no_cmd();
+
+	/* De volta, o foco fica onde estava. */
+	insert_card("tres");
+	refresh();
+	zassert_str_equal("  a\n> b\n  c", list_text(&ui));
+	zassert_equal(1, focused(&ui));
+}
+
+ZTEST(display, test_lista_menor_traz_o_foco_para_dentro)
+{
+	struct ui ui = start_ui("cheia");
+
+	for (size_t i = 0; i < FULL_COUNT; i++) {
+		tap(INPUT_KEY_RIGHT);
+	}
+	zassert_equal(3, focused(&ui));
+
+	/* Outro cartão, com três faixas: o foco vai para a última, e a
+	 * janela volta ao começo.
+	 */
+	insert_card("tres");
+	refresh();
+	zassert_str_equal("  a\n  b\n  c", list_text(&ui));
+	zassert_equal(2, focused(&ui));
+
+	/* De volta à lista longa, a janela mostra a faixa em foco sem rolar. */
+	insert_card("cheia");
+	refresh();
+	zassert_str_equal("  f00\n  f01\n  f02\n  f03", list_text(&ui));
+	zassert_equal(2, focused(&ui));
+
+	/* Sem cartão, nada fica em foco. */
+	insert_card("nao-existe");
+	refresh();
+	zassert_str_equal(library_state_text(LIBRARY_REMOVED), list_text(&ui));
 }
 
 ZTEST(display, test_biblioteca_vazia_diz_que_esta_vazia)

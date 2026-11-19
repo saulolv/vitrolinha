@@ -7,6 +7,7 @@
 #include <vitrolinha/playback_trace.h>
 #include <vitrolinha/player.h>
 #include <vitrolinha/snapshot.h>
+#include <vitrolinha/library.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/tone.h>
 
@@ -75,7 +76,8 @@ static void *setup(void)
 	write_file("5.csv", out_of_range, sizeof(out_of_range) - 1);
 	write_file("6.rtx", rtttl, sizeof(rtttl) - 1);
 	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", directory, 1));
-	zassert_equal(7, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+	zassert_equal(7, library_refresh());
+	zassert_equal(7, library_copy(tracks, ARRAY_SIZE(tracks), NULL));
 	zassert_str_equal("Teste", tracks[6].name, "o nome sai do cabecalho RTTTL");
 	zassert_ok(loader_init());
 	zassert_ok(tone_init());
@@ -352,6 +354,17 @@ static struct player_snapshot await_state(enum player_state wanted, int track)
 	return snap;
 }
 
+/**
+ * @brief Varre a pasta de novo, como uma reinserção do cartão.
+ *
+ * Sem contar faixas: o teste de reinício apaga 4.csv, e as faixas 0 a 3,
+ * que são as que os comandos daqui usam, não mudam de índice.
+ */
+static void rescan(void)
+{
+	zassert_true(library_refresh() > 4);
+}
+
 /** @brief O player é iniciado uma vez por processo, por quem chegar antes. */
 static void start_player(void)
 {
@@ -359,8 +372,7 @@ static void start_player(void)
 
 	cmd_flush();
 	if (!started) {
-		zassert_equal(-EINVAL, player_init(LIBRARY_MAX + 1U));
-		zassert_ok(player_init(5));
+		zassert_ok(player_init());
 		started = true;
 	}
 }
@@ -391,12 +403,24 @@ ZTEST(playback, test_player_falhas_e_comandos_fora_de_hora)
 	start_player();
 	(void)playback_trace_end(clock_us());
 
-	/* Faixa além da biblioteca: ignorada. */
+	/* Sem biblioteca, nenhum comando escolhe faixa. */
+	library_reset();
 	snapshot_read(&before);
-	zassert_ok(cmd_post(CMD_SELECT, 6));
+	zassert_ok(cmd_post(CMD_SELECT, 0));
+	zassert_ok(cmd_post(CMD_NEXT, TRACK_NONE));
+	zassert_ok(cmd_post(CMD_PREV, TRACK_NONE));
+	zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
 	snap = settle();
 	zassert_equal(before.state, snap.state);
 	zassert_equal(before.track, snap.track);
+	rescan();
+
+	/* Faixa além da lista: o loader responde, e a tela mostra o motivo. */
+	zassert_ok(cmd_post(CMD_SELECT, 7));
+	snap = settle();
+	zassert_equal(PLAYER_STOPPED, snap.state);
+	zassert_equal(7, snap.track);
+	zassert_equal(-ENOENT, snap.load_error);
 
 	/* Arquivo inválido: para na faixa, e tocar de novo tenta carregá-la. */
 	zassert_ok(cmd_post(CMD_SELECT, 3));
@@ -414,6 +438,22 @@ ZTEST(playback, test_player_falhas_e_comandos_fora_de_hora)
 	zassert_equal(-EINVAL, snap.load_error);
 	zassert_equal(2, snap.error_line);
 	zassert_equal(6, snap.error_column);
+
+	/* A recusa do parser tira a faixa do seguinte e do anterior. */
+	zassert_ok(cmd_post(CMD_SELECT, 2));
+	zassert_ok(cmd_post(CMD_STOP, TRACK_NONE));
+	zassert_ok(cmd_post(CMD_NEXT, TRACK_NONE));
+	zassert_ok(cmd_post(CMD_STOP, TRACK_NONE));
+	snap = settle();
+	zassert_equal(4, snap.track, "a faixa 3 recusada foi pulada");
+
+	/* Cartão fora com a faixa parada: tocar não tenta carregá-la. */
+	library_reset();
+	zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
+	snap = settle();
+	zassert_equal(PLAYER_STOPPED, snap.state);
+	zassert_equal(0, snap.load_error);
+	rescan();
 
 	/* Parar durante a carga cancela o pedido: nada chega a tocar. */
 	zassert_ok(playback_trace_begin(clock_us()));

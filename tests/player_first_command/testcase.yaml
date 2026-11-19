@@ -13,12 +13,17 @@ common:
 tests:
   vitrolinha.player_first_command.empty_library:
     extra_configs:
-      - CONFIG_TEST_LIBRARY_COUNT=0
+      - CONFIG_TEST_CARD=n
       - CONFIG_TEST_EXPECTED_TRACK=-1
   vitrolinha.player_first_command.play:
     extra_configs:
       - CONFIG_TEST_FIRST_COMMAND=0
       - CONFIG_TEST_EXPECTED_TRACK=0
+  vitrolinha.player_first_command.play_all_rejected:
+    extra_configs:
+      - CONFIG_TEST_REJECT_ALL=y
+      - CONFIG_TEST_FIRST_COMMAND=0
+      - CONFIG_TEST_EXPECTED_TRACK=-1
   vitrolinha.player_first_command.next:
     extra_configs:
       - CONFIG_TEST_FIRST_COMMAND=1
@@ -26,4 +31,4 @@ tests:
   vitrolinha.player_first_command.prev:
     extra_configs:
       - CONFIG_TEST_FIRST_COMMAND=2
-      - CONFIG_TEST_EXPECTED_TRACK=2
+      - CONFIG_TEST_EXPECTED_TRACK=1

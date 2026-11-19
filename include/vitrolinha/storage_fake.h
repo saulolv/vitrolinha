@@ -49,7 +49,20 @@ void storage_fake_set_present(bool present);
 void storage_fake_set_failing(bool failing);
 
 /**
- * @brief Devolve tudo ao estado inicial: cartão presente e saudável.
+ * @brief Faz a próxima @ref storage_load devolver @p err.
+ *
+ * Só a próxima: a falha é consumida pela carga que a recebe. Serve para os
+ * erros que são culpa do arquivo, e não do cartão — `-EFBIG` de um arquivo
+ * grande, `-ENOENT` de um arquivo que sumiu —, que as faixas embutidas não
+ * produzem por conta própria.
+ *
+ * @param err Código negativo a devolver, ou 0 para desarmar.
+ */
+void storage_fake_fail_next_load(int err);
+
+/**
+ * @brief Devolve tudo ao estado inicial: cartão presente e saudável, sem
+ *        falha de carga armada.
  *
  * Chamado no preparo de cada teste, para que um caso não herde o estado do
  * anterior.

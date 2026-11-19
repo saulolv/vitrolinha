@@ -72,8 +72,13 @@ enum card_state {
  *
  * Chamada **na thread do monitor**, só quando o estado muda de fato, e já com
  * a trava interna do módulo solta — então pode chamar qualquer coisa deste
- * cabeçalho sem risco de impasse. Não pode bloquear nem demorar: enquanto ela
- * roda, o monitor não observa o cartão.
+ * cabeçalho sem risco de impasse, inclusive pegar o volume emprestado.
+ *
+ * Pode bloquear, e o observador do firmware bloqueia: ele varre a biblioteca
+ * (ADR 0010). O custo é o mesmo de um empréstimo — enquanto ela roda, o
+ * monitor não observa o cartão, e uma remoção no meio é vista na sondagem
+ * seguinte. O que não pode é esperar por algo que só o monitor faria, como
+ * outra transição de estado.
  *
  * @param state O estado novo.
  */
@@ -82,9 +87,9 @@ typedef void (*card_observer_t)(enum card_state state);
 /**
  * @brief Registra quem quer saber das mudanças de estado.
  *
- * Um observador só, de propósito: quem precisa saber é a máquina de navegação
- * da interface, e um segundo interessado seria sinal de que o estado deveria
- * estar sendo lido por @ref card_get_state, não empurrado.
+ * Um observador só, de propósito: quem precisa saber é a biblioteca, que
+ * varre de novo a cada transição. A interface não observa o cartão — ela lê
+ * o estado da biblioteca a cada quadro.
  *
  * Registrar **antes** de @ref card_init para receber também a transição
  * inicial — a de quem liga a placa com o cartão já no soquete.

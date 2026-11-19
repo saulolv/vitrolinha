@@ -6,6 +6,7 @@
  * reutiliza o buffer; resultados de gerações antigas nunca são publicados.
  * O spinlock protege apenas metadados e operações de fila sem espera.
  */
+#include <vitrolinha/library.h>
 #include <vitrolinha/loader.h>
 #include <vitrolinha/parser.h>
 #include <vitrolinha/storage.h>
@@ -92,10 +93,22 @@ static void loader_worker(void *a, void *b, void *c)
 			if (rewind) {
 				status = parser_rewind(&parser);
 			} else {
-				int size = storage_load(track, buffer, sizeof(buffer));
+				/* Pela biblioteca, e não direto do storage: é ela que
+				 * decide se o erro é do arquivo ou do cartão (ADR 0010).
+				 */
+				uint32_t generation;
+				int size = library_load(track, buffer, sizeof(buffer),
+							&generation);
 
 				status = size < 0 ? size :
 					parser_init(&parser, buffer, size, &error);
+				if (size >= 0 && status != 0) {
+					/* O parser recusou: a faixa ganha o `!` e sai do
+					 * seguinte/anterior. -ESTALE é uma varredura no
+					 * meio, e aí a marca não vale para a lista nova.
+					 */
+					(void)library_reject(track, generation);
+				}
 			}
 			key = k_spin_lock(&lock);
 			if (id != active_id) {
