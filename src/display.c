@@ -4,7 +4,7 @@
  *
  * Duas telas, como a especificação pede:
  *
- * - **Biblioteca**: a lista no roller e, no rodapé, um mini-player. O
+ * - **Biblioteca**: a lista de faixas e, no rodapé, um mini-player. O
  *   destaque é o foco, que só o encoder move; a faixa do instantâneo leva
  *   `>`, e a recusada leva `!`. Foco e marcador são coisas diferentes de
  *   propósito: trocar de faixa pelos botões não mexe no foco de quem está
@@ -81,19 +81,14 @@ static const struct device *const input_dev = DEVICE_DT_GET(INPUT_NODE);
 /** @brief Escala da barra: a mesma de @ref snapshot_progress_permille. */
 #define BAR_MAX 1000
 
-/** @brief Linhas visíveis da biblioteca. Ímpar, para o foco ficar no meio. */
+/** @brief Linhas visíveis da biblioteca. */
 #define LIBRARY_ROWS 5
 
-/** @brief Marcador e espaço antes de cada nome da lista. */
-#define MARKER_LEN 2U
+/** @brief Altura de uma linha da lista: a da UNSCII-8, 8 px de glifo e 1 de respiro. */
+#define ROW_HEIGHT 9
 
-/**
- * @brief Tamanho das opções do roller.
- *
- * Cada faixa ocupa o marcador, o nome (até TRACK_NAME_MAX - 1 bytes) e o
- * `\n`. Mais o terminador.
- */
-#define ROLLER_OPTIONS_SIZE (LIBRARY_MAX * (MARKER_LEN + TRACK_NAME_MAX) + 1U)
+/** @brief Texto de uma linha da lista: marcador, espaço, nome e terminador. */
+#define ROW_TEXT_SIZE (2U + TRACK_NAME_MAX)
 
 /** @brief Texto do rótulo de nome quando o instantâneo não tem faixa. */
 #define NOTHING_PLAYING "Nada tocando"
@@ -102,15 +97,11 @@ static const struct device *const input_dev = DEVICE_DT_GET(INPUT_NODE);
 #define CHOOSE_TRACK "Escolha a faixa"
 
 /*
- * Geometria da biblioteca, de cima para baixo, nos 64 px da tela. A linha da
- * UNSCII-8 tem 9 px — 8 de glifo e 1 de respiro —, então a lista dispensa
- * espaçamento extra: 5 linhas x 9 px = 45 px, 2 px de folga, a barra de 6 px,
- * mais 2 de folga e o rodapé de 9 px. O teste de geometria do display confere
- * a soma.
+ * Geometria da biblioteca, de cima para baixo, nos 64 px da tela: 5 linhas x
+ * 9 px = 45 px de lista, 2 px de folga, a barra de 6 px, mais 2 de folga e o
+ * rodapé de 9 px. O teste de geometria do display confere a soma, e o
+ * desenho, que as folgas ficam apagadas.
  */
-
-/** @brief Espaço extra entre as linhas do roller: nenhum, ver acima. */
-#define ROW_LINE_SPACE 0
 
 /** @brief Altura da barra do mini-player, que também separa lista e rodapé. */
 #define MINI_BAR_HEIGHT 6
@@ -182,7 +173,7 @@ static struct track_meta library[LIBRARY_MAX];
 /** @brief Quantas posições de @ref library valem. Zero se a varredura falhou. */
 static size_t library_count;
 
-/** @brief Erro da varredura, ou 0. Decide o texto do roller vazio. */
+/** @brief Erro da varredura, ou 0. Decide o texto da lista vazia. */
 static int library_error;
 
 /**
@@ -191,11 +182,8 @@ static int library_error;
  */
 static bool rejected[LIBRARY_MAX];
 
-/** @brief Faixa que leva `>` nas opções do roller agora. */
+/** @brief Faixa que leva `>` na lista agora. */
 static int16_t marked_track = TRACK_NONE;
-
-/** @brief Opções do roller, uma faixa por linha. O LVGL copia; o buffer é rascunho. */
-static char options[ROLLER_OPTIONS_SIZE];
 
 /** @brief Pedido de alternar a tela, vindo do botão; atendido no timer do LVGL. */
 static atomic_t toggle_requested;
@@ -203,8 +191,22 @@ static atomic_t toggle_requested;
 static lv_indev_t *indev;
 
 static lv_obj_t *library_screen;
-static lv_obj_t *roller;
 static lv_group_t *library_group;
+
+/** @brief A lista: alvo do encoder na biblioteca, com as linhas visíveis. */
+static lv_obj_t *list;
+
+/** @brief As linhas visíveis; mostram as faixas de @ref top em diante. */
+static lv_obj_t *rows[LIBRARY_ROWS];
+
+/** @brief Barra de rolagem, na borda direita da lista. */
+static lv_obj_t *thumb;
+
+/** @brief Faixa sob o destaque. */
+static size_t cursor;
+
+/** @brief Primeira faixa visível. */
+static size_t top;
 
 /* Mini-player no rodapé da biblioteca. */
 static lv_obj_t *mini_bar;
@@ -291,46 +293,85 @@ static char track_marker(size_t i, int16_t playing)
 	return ((int)i == playing) ? '>' : ' ';
 }
 
+static void label_set(lv_obj_t *label, const char *text);
+
 /**
- * @brief Monta as opções do roller em @ref options, uma faixa por linha.
+ * @brief Desenha a janela da biblioteca nas linhas visíveis.
  *
- * Biblioteca vazia vira uma única linha explicando o porquê.
+ * Lista virtual: existem só ::LIBRARY_ROWS rótulos, e eles mostram as faixas
+ * de @ref top em diante, com o destaque na do @ref cursor. A memória da lista
+ * não depende do tamanho da biblioteca, e só os rótulos cujo texto muda são
+ * redesenhados.
  */
-static void library_options(int16_t playing)
+static void list_render(void)
 {
-	size_t used = 0;
+	for (size_t r = 0; r < LIBRARY_ROWS; r++) {
+		size_t i = top + r;
+		bool shown = (i < library_count);
 
+		lv_obj_set_flag(rows[r], LV_OBJ_FLAG_HIDDEN, !shown);
+		lv_obj_set_state(rows[r], LV_STATE_CHECKED, shown && (i == cursor));
+		if (shown) {
+			char text[ROW_TEXT_SIZE];
+
+			snprintf(text, sizeof(text), "%c %s", track_marker(i, marked_track),
+				 library[i].name);
+			label_set(rows[r], text);
+		}
+	}
+
+	/* Biblioteca vazia: a primeira linha diz por quê, sem destaque. */
 	if (library_count == 0U) {
-		const char *why = (library_error != 0) ? storage_error_text(library_error)
-						       : "Biblioteca vazia";
+		lv_obj_remove_flag(rows[0], LV_OBJ_FLAG_HIDDEN);
+		label_set(rows[0], (library_error != 0) ? storage_error_text(library_error)
+							: "Biblioteca vazia");
+	}
 
-		strncpy(options, why, sizeof(options) - 1U);
-		options[sizeof(options) - 1U] = '\0';
+	/* A barra de rolagem: altura proporcional à janela, posição à dela. Só
+	 * aparece quando a biblioteca não cabe na tela.
+	 */
+	bool scrolls = (library_count > LIBRARY_ROWS);
+
+	lv_obj_set_flag(thumb, LV_OBJ_FLAG_HIDDEN, !scrolls);
+	if (scrolls) {
+		int32_t track_h = LIBRARY_ROWS * ROW_HEIGHT;
+		int32_t thumb_h = track_h * LIBRARY_ROWS / (int32_t)library_count;
+		int32_t last_top = (int32_t)(library_count - LIBRARY_ROWS);
+
+		lv_obj_set_height(thumb, thumb_h);
+		lv_obj_set_y(thumb, (track_h - thumb_h) * (int32_t)top / last_top);
+	}
+}
+
+/**
+ * @brief Move o cursor @p step faixas, sem dar a volta nas pontas.
+ *
+ * A janela só anda quando o cursor passa da borda dela: o destaque desce
+ * linha por linha, e a lista rola na última.
+ */
+static void list_move(int step)
+{
+	if (library_count == 0U) {
 		return;
 	}
 
-	for (size_t i = 0; i < library_count; i++) {
-		/* track_meta_init garante o terminador dentro de TRACK_NAME_MAX. */
-		size_t len = strlen(library[i].name);
+	int next = (int)cursor + step;
 
-		if (i > 0U) {
-			options[used++] = '\n';
-		}
-
-		options[used++] = track_marker(i, playing);
-		options[used++] = ' ';
-		memcpy(&options[used], library[i].name, len);
-		used += len;
+	cursor = (size_t)CLAMP(next, 0, (int)library_count - 1);
+	if (cursor < top) {
+		top = cursor;
+	} else if (cursor >= top + LIBRARY_ROWS) {
+		top = cursor - LIBRARY_ROWS + 1U;
 	}
 
-	options[used] = '\0';
+	list_render();
 }
 
 /**
  * @brief Reescreve os marcadores da lista se a faixa ou as recusas mudaram.
  *
- * O foco fica onde estava: `lv_roller_set_options` o devolve ao topo, e ele
- * é reposto em seguida.
+ * O cursor fica onde o encoder o deixou: trocar de faixa pelos botões não
+ * mexe em quem navega.
  */
 static void library_mark(const struct player_snapshot *snap)
 {
@@ -347,16 +388,7 @@ static void library_mark(const struct player_snapshot *snap)
 	}
 
 	marked_track = snap->track;
-
-	if (library_count == 0U) {
-		return;
-	}
-
-	uint32_t focused = lv_roller_get_selected(roller);
-
-	library_options(marked_track);
-	lv_roller_set_options(roller, options, LV_ROLLER_MODE_NORMAL);
-	lv_roller_set_selected(roller, focused, LV_ANIM_OFF);
+	list_render();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -593,37 +625,49 @@ static void refresh_timer_cb(lv_timer_t *timer)
 /* -------------------------------------------------------------------------- */
 
 /**
- * @brief Clique no roller: toca a faixa em foco e abre a reprodução.
+ * @brief Clique na lista: toca a faixa sob o destaque e abre a reprodução.
  *
  * Publica ::CMD_SELECT; o que a reprodução mostra é o que o player publicar
  * no instantâneo em resposta — a tela mostra o que está tocando, não o que
  * foi pedido.
- *
- * Reabre o modo de edição do grupo: com o encoder, o clique o encerra, e sem
- * ele o giro passaria a mover o foco em vez da seleção do roller.
  */
-static void roller_clicked_cb(lv_event_t *e)
+static void list_clicked(void)
 {
-	lv_obj_t *target = lv_event_get_target_obj(e);
-	lv_group_t *g = lv_obj_get_group(target);
-	uint32_t selected = lv_roller_get_selected(target);
-	int err;
-
-	if (g != NULL) {
-		lv_group_set_editing(g, true);
-	}
-
-	if (selected >= library_count) {
+	if (library_count == 0U) {
 		return;
 	}
 
-	err = cmd_post(CMD_SELECT, (int16_t)library[selected].index);
+	int err = cmd_post(CMD_SELECT, (int16_t)library[cursor].index);
+
 	if (err != 0) {
-		LOG_WRN("Selecao da faixa %u descartada: %d", library[selected].index, err);
+		LOG_WRN("Selecao da faixa %u descartada: %d", library[cursor].index, err);
 		return;
 	}
 
 	show_playback();
+}
+
+/**
+ * @brief Eventos do encoder na lista.
+ *
+ * A lista é o único objeto do grupo, em edição: o giro chega como seta, na
+ * placa e no keypad do simulador, e o clique, como clique. É o mesmo arranjo
+ * da tela de reprodução.
+ */
+static void list_event_cb(lv_event_t *e)
+{
+	if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+		list_clicked();
+		return;
+	}
+
+	uint32_t key = lv_event_get_key(e);
+
+	if (key == LV_KEY_LEFT) {
+		list_move(-1);
+	} else if (key == LV_KEY_RIGHT) {
+		list_move(1);
+	}
 }
 
 /**
@@ -731,52 +775,87 @@ static void mini_build(void)
 	lv_obj_add_flag(mini_time, LV_OBJ_FLAG_HIDDEN);
 }
 
-static void library_build(void)
+/**
+ * @brief Lista da biblioteca: o destaque anda, e a lista rola nas bordas.
+ *
+ * É o padrão dos menus navegados por roda ou botão: a tela fica sempre cheia
+ * de faixas, e o destaque mostra onde se está. Um roller, que prende o
+ * destaque no meio, é para escolher um valor, e deixava linhas vazias nas
+ * pontas da lista.
+ *
+ * Tudo sem os estilos do tema: o destaque é a linha invertida, e nada mais.
+ * O contorno de foco do tema, desenhado 2 px por fora do objeto focado,
+ * sobrava como uma faixa colada na barra do mini-player.
+ */
+static void list_build(void)
 {
-	static lv_style_t style_main;
-	static lv_style_t style_selected;
+	static lv_style_t style_row;
+	static lv_style_t style_row_cursor;
 	static bool styled;
 
 	if (!styled) {
-		lv_style_init(&style_main);
-		lv_style_set_bg_color(&style_main, lv_color_hex(0xffffff));
-		lv_style_set_border_width(&style_main, 0);
-		lv_style_set_radius(&style_main, 0);
-		lv_style_set_pad_ver(&style_main, 0);
-		lv_style_set_text_color(&style_main, lv_color_hex(0x000000));
-		lv_style_set_text_line_space(&style_main, ROW_LINE_SPACE);
-		/* À esquerda, para os marcadores formarem uma coluna. */
-		lv_style_set_text_align(&style_main, LV_TEXT_ALIGN_LEFT);
+		lv_style_init(&style_row);
+		lv_style_set_text_color(&style_row, lv_color_black());
+		lv_style_set_pad_hor(&style_row, 1);
 
-		lv_style_init(&style_selected);
-		lv_style_set_bg_color(&style_selected, lv_color_hex(0x000000));
-		lv_style_set_text_color(&style_selected, lv_color_hex(0xffffff));
-		lv_style_set_text_align(&style_selected, LV_TEXT_ALIGN_LEFT);
+		lv_style_init(&style_row_cursor);
+		lv_style_set_bg_color(&style_row_cursor, lv_color_black());
+		lv_style_set_bg_opa(&style_row_cursor, LV_OPA_COVER);
+		lv_style_set_text_color(&style_row_cursor, lv_color_white());
 
 		styled = true;
 	}
 
-	library_screen = screen_create();
+	list = lv_obj_create(library_screen);
+	lv_obj_remove_style_all(list);
+	lv_obj_set_size(list, LV_HOR_RES, LIBRARY_ROWS * ROW_HEIGHT);
+	lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 0);
+	lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+	/* Sem rolagem própria — quem rola é a janela —, o que também faz o
+	 * encoder entregar o clique como clique, e não como entrada em edição.
+	 */
+	lv_obj_remove_flag(list, LV_OBJ_FLAG_SCROLLABLE);
+	/* Espaço para a barra de rolagem: o destaque para antes dela. */
+	lv_obj_set_style_pad_right(list, 3, 0);
+	lv_obj_add_event_cb(list, list_event_cb, LV_EVENT_CLICKED, NULL);
+	lv_obj_add_event_cb(list, list_event_cb, LV_EVENT_KEY, NULL);
 
-	/* A lista no alto e o mini-player embaixo; ver a geometria no topo. */
-	roller = lv_roller_create(library_screen);
-	lv_obj_add_style(roller, &style_main, LV_PART_MAIN);
-	lv_obj_add_style(roller, &style_selected, LV_PART_SELECTED);
-	lv_obj_set_width(roller, LV_HOR_RES);
-	lv_roller_set_visible_row_count(roller, LIBRARY_ROWS);
-	lv_obj_align(roller, LV_ALIGN_TOP_MID, 0, 0);
+	for (size_t r = 0; r < LIBRARY_ROWS; r++) {
+		rows[r] = lv_label_create(list);
+		lv_obj_remove_style_all(rows[r]);
+		lv_obj_add_style(rows[r], &style_row, 0);
+		lv_obj_add_style(rows[r], &style_row_cursor, LV_STATE_CHECKED);
+		lv_obj_set_width(rows[r], lv_pct(100));
+		lv_label_set_long_mode(rows[r], LV_LABEL_LONG_MODE_DOTS);
+	}
 
-	mini_build();
-
-	marked_track = TRACK_NONE;
-	library_options(marked_track);
-	lv_roller_set_options(roller, options, LV_ROLLER_MODE_NORMAL);
-	lv_roller_set_selected(roller, 0, LV_ANIM_OFF);
-	lv_obj_add_event_cb(roller, roller_clicked_cb, LV_EVENT_CLICKED, NULL);
+	/* Barra de rolagem de 2 px na borda direita, desenhada à mão: com a
+	 * lista virtual, não há conteúdo rolando para o LVGL medir.
+	 */
+	thumb = lv_obj_create(library_screen);
+	lv_obj_remove_style_all(thumb);
+	lv_obj_set_style_bg_color(thumb, lv_color_black(), 0);
+	lv_obj_set_style_bg_opa(thumb, LV_OPA_COVER, 0);
+	lv_obj_set_width(thumb, 2);
+	lv_obj_set_x(thumb, LV_HOR_RES - 2);
 
 	library_group = lv_group_create();
-	lv_group_add_obj(library_group, roller);
+	lv_group_add_obj(library_group, list);
 	lv_group_set_editing(library_group, true);
+
+	cursor = 0;
+	top = 0;
+	list_render();
+}
+
+static void library_build(void)
+{
+	library_screen = screen_create();
+	marked_track = TRACK_NONE;
+
+	/* A lista no alto e o mini-player embaixo; ver a geometria no topo. */
+	list_build();
+	mini_build();
 }
 
 static lv_obj_t *playback_label(void)
