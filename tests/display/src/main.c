@@ -37,6 +37,16 @@
 /** Faixas da pasta "tres": a ordem da lista é a alfabética. */
 static const char *const three[] = {"a", "b", "c"};
 
+/** Faixas da pasta "longos": o nome do cabeçalho passa das 16 colunas. */
+static const struct {
+	const char *file;
+	const char *header;
+} long_names[] = {
+	{"a.rtx", "Happy Birthday"},
+	{"b.rtx", "Twinkle Twinkle Little Star"},
+	{"c.rtx", "Eine kleine Nachtmusik"},
+};
+
 /** Uma a mais do que a biblioteca comporta. */
 #define FULL_COUNT (LIBRARY_MAX + 1U)
 
@@ -183,13 +193,14 @@ static void publish(uint32_t state, int16_t track, uint64_t base_us, uint32_t to
 }
 
 /** @brief Publica uma carga recusada, como o player faz ao recebê-la. */
-static void publish_error(int16_t track, int16_t err, uint16_t line)
+static void publish_error(int16_t track, int16_t err, uint16_t line, uint16_t column)
 {
 	const struct player_snapshot snap = {
 		.state = PLAYER_STOPPED,
 		.track = track,
 		.load_error = err,
 		.error_line = line,
+		.error_column = column,
 	};
 
 	snapshot_publish(&snap);
@@ -214,7 +225,12 @@ static bool hidden(lv_obj_t *obj)
 	return lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
 
-/** @brief Os textos das linhas visíveis da lista, um por linha, como no OLED. */
+/**
+ * @brief Os textos das linhas visíveis da lista, um por linha.
+ *
+ * O texto pedido, guardado no user_data do rótulo: o que o LVGL guarda ele
+ * reescreve com reticências quando o nome não cabe.
+ */
 static const char *list_text(const struct ui *ui)
 {
 	static char text[8 * (TRACK_NAME_MAX + 3U)];
@@ -226,7 +242,7 @@ static const char *list_text(const struct ui *ui)
 
 		if (!hidden(row)) {
 			used += snprintf(&text[used], sizeof(text) - used, "%s%s",
-					 (used > 0U) ? "\n" : "", lv_label_get_text(row));
+					 (used > 0U) ? "\n" : "", (const char *)lv_obj_get_user_data(row));
 		}
 	}
 	return text;
@@ -246,7 +262,7 @@ static int focused(const struct ui *ui)
 /** @brief Texto da linha em destaque. */
 static const char *focused_text(const struct ui *ui)
 {
-	return lv_label_get_text(lv_obj_get_child(ui->list, focused(ui)));
+	return lv_obj_get_user_data(lv_obj_get_child(ui->list, focused(ui)));
 }
 
 /** @brief Desenha a tela à mostra no display de teste. */
@@ -296,6 +312,18 @@ static void *setup(void)
 		write_track("cheia", name);
 	}
 
+	/* Nomes de cabeçalho RTTTL maiores que as 16 colunas da tela. */
+	make_path("longos", NULL);
+	zassert_ok(mkdir(path, 0700));
+	ARRAY_FOR_EACH(long_names, i) {
+		make_path("longos", long_names[i].file);
+		FILE *f = fopen(path, "w");
+
+		zassert_not_null(f);
+		fprintf(f, "%s:d=4,o=5,b=120:c,e,g", long_names[i].header);
+		zassert_ok(fclose(f));
+	}
+
 	/* Antes de o display inicializar, a interface se recusa a subir. */
 	zassert_false(device_is_ready(display_dev));
 	zassert_equal(-ENODEV, display_init());
@@ -318,7 +346,11 @@ static void teardown(void *fixture)
 		full_name(name, sizeof(name), i);
 		remove_track("cheia", name);
 	}
-	static const char *const dirs[] = {"tres", "vazia", "cheia"};
+	ARRAY_FOR_EACH(long_names, i) {
+		make_path("longos", long_names[i].file);
+		zassert_ok(unlink(path));
+	}
+	static const char *const dirs[] = {"tres", "vazia", "cheia", "longos"};
 
 	ARRAY_FOR_EACH(dirs, i) {
 		make_path(dirs[i], NULL);
@@ -371,7 +403,7 @@ ZTEST(display, test_biblioteca_vazia_diz_que_esta_vazia)
 	/* Uma faixa no instantâneo não põe marcador numa lista sem faixas. */
 	publish(PLAYER_PLAYING, 0, now_us(), USEC_PER_SEC);
 	refresh();
-	zassert_str_equal("Biblioteca vazia", list_text(&ui));
+	zassert_str_equal("Nenhuma faixa", list_text(&ui));
 }
 
 ZTEST(display, test_biblioteca_cheia_mostra_so_as_32_primeiras)
@@ -619,6 +651,56 @@ ZTEST(display, test_desenho_da_biblioteca_sem_sobras)
 	fake_display_dump("reproducao");
 }
 
+ZTEST(display, test_nome_longo_nao_quebra_a_tela)
+{
+	struct ui ui = start_ui("longos");
+	int32_t line = lv_font_get_line_height(lv_obj_get_style_text_font(ui.list, 0));
+
+	/* "> Happy Birthday" tem 16 caracteres, 128 px, numa linha de 125: com
+	 * altura automática, as reticências não valem e o rótulo quebra em duas
+	 * linhas, empurrando a lista. A faixa 1 tem o nome mais longo que cabe
+	 * no campo, 23 bytes.
+	 */
+	publish(PLAYER_PLAYING, 0, now_us(), 4U * USEC_PER_SEC);
+	refresh();
+	draw();
+	fake_display_dump("nomes longos, faixa 0 tocando");
+
+	lv_obj_update_layout(ui.library);
+	for (uint32_t i = 0; i < lv_obj_get_child_count(ui.list); i++) {
+		lv_obj_t *row = lv_obj_get_child(ui.list, i);
+
+		if (hidden(row)) {
+			continue;
+		}
+		zassert_equal(line, lv_obj_get_height(row), "linha %u quebrou", i);
+		zassert_equal((int32_t)i * line, lv_obj_get_y(row), "linha %u fora do lugar", i);
+	}
+
+	/* O LVGL guarda o nome com reticências; a cópia guarda o pedido, e é
+	 * contra ela que a tela decide se redesenha. Sem a cópia, o nome longo
+	 * seria reescrito a cada atualização.
+	 */
+	lv_obj_t *first = lv_obj_get_child(ui.list, 0);
+
+	zassert_str_equal("> Happy Birthday", lv_obj_get_user_data(first));
+	zassert_not_null(strstr(lv_label_get_text(first), "..."), "sem reticencias");
+
+	publish(PLAYER_PLAYING, 1, now_us(), 4U * USEC_PER_SEC);
+	refresh();
+	draw();
+	fake_display_dump("nomes longos, faixa 1 tocando");
+	lv_obj_update_layout(ui.library);
+	zassert_equal(line, lv_obj_get_height(ui.mini_name), "nome do mini-player quebrou");
+	zassert_false(hidden(ui.mini_time), "o nome empurrou o tempo para fora");
+
+	toggle();
+	draw();
+	fake_display_dump("nomes longos, reproducao");
+	lv_obj_update_layout(ui.playback);
+	zassert_equal(line, lv_obj_get_height(ui.name), "nome da reproducao quebrou");
+}
+
 ZTEST(display, test_mini_player_mostra_a_faixa_sem_sair_da_lista)
 {
 	struct ui ui = start_ui("tres");
@@ -657,7 +739,7 @@ ZTEST(display, test_mini_player_mostra_a_faixa_sem_sair_da_lista)
 	zassert_equal(1000, lv_bar_get_value(ui.mini_bar));
 
 	/* Carga recusada: o motivo é da tela de reprodução; aqui, só o aviso. */
-	publish_error(2, -EINVAL, 3U);
+	publish_error(2, -EINVAL, 3U, 9U);
 	refresh();
 	zassert_str_equal("c", lv_label_get_text(ui.mini_name));
 	zassert_str_equal("erro", lv_label_get_text(ui.mini_time));
@@ -735,11 +817,11 @@ ZTEST(display, test_arquivo_recusado_mostra_o_erro_e_volta_a_biblioteca)
 	struct ui ui = start_ui("tres");
 
 	toggle();
-	publish_error(1, -EINVAL, 3U);
+	publish_error(1, -EINVAL, 3U, 9U);
 	refresh();
 	zassert_str_equal("b", lv_label_get_text(ui.name));
 	zassert_str_equal("Arquivo invalido", lv_label_get_text(ui.state));
-	zassert_str_equal("linha 3", lv_label_get_text(ui.time));
+	zassert_str_equal("linha 3 col 9", lv_label_get_text(ui.time));
 	zassert_str_equal("  a\n! b\n  c", list_text(&ui));
 
 	/* Ainda na reprodução até o prazo, sem agendar a volta duas vezes. */
@@ -753,7 +835,7 @@ ZTEST(display, test_arquivo_recusado_mostra_o_erro_e_volta_a_biblioteca)
 	/* Frequência fora da faixa também é recusa do parser. Na biblioteca o
 	 * erro não agenda volta nenhuma: já se está nela.
 	 */
-	publish_error(0, -ERANGE, 0U);
+	publish_error(0, -ERANGE, 0U, 0U);
 	refresh();
 	zassert_str_equal("! a\n! b\n  c", list_text(&ui));
 	zassert_equal(ui.library, lv_screen_active());
@@ -775,7 +857,7 @@ ZTEST(display, test_erro_do_cartao_nao_marca_a_faixa)
 	struct ui ui = start_ui("tres");
 
 	toggle();
-	publish_error(0, -ENOENT, 0U);
+	publish_error(0, -ENOENT, 0U, 0U);
 	refresh();
 	zassert_str_equal(storage_error_text(-ENOENT), lv_label_get_text(ui.state));
 	zassert_str_equal("", lv_label_get_text(ui.time));
@@ -787,7 +869,7 @@ ZTEST(display, test_volta_do_erro_depois_de_sair_da_reproducao)
 	struct ui ui = start_ui("tres");
 
 	toggle();
-	publish_error(2, -EINVAL, 2U);
+	publish_error(2, -EINVAL, 2U, 1U);
 	refresh();
 
 	/* Saiu antes do prazo: quando ele vence, a biblioteca já está à mostra. */
@@ -846,7 +928,7 @@ ZTEST(display, test_reiniciar_descarta_as_telas_anteriores)
 
 	/* Na reprodução, com a volta do erro agendada. */
 	toggle();
-	publish_error(1, -EINVAL, 2U);
+	publish_error(1, -EINVAL, 2U, 1U);
 	refresh();
 	zassert_equal(ui.playback, lv_screen_active());
 
