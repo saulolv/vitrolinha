@@ -1,9 +1,11 @@
 #ifndef DISPLAY_H_
 #define DISPLAY_H_
 
+#include "vitrolinha/track.h"
 #include <lvgl.h>
 #include <lvgl_input_device.h>
 #include <lvgl_zephyr.h>
+#include <stdint.h>
 
 /** @brief Período do quadro de demonstração: os 10 fps do plano. */
 #define DISPLAY_DEMO_PERIOD_MS 100
@@ -17,8 +19,8 @@
  * @return 0 em caso de sucesso.
  * @return Valor negativo em caso de erro.
  */
-static void app(void);
+static void app(struct track_meta*, uint8_t*, size_t);
 static void screen_init(void);
-int display_init(void);
+int display_init(struct track_meta*, uint8_t*, size_t);
 
 #endif // DISPLAY_H_

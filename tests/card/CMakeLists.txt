@@ -4,12 +4,11 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(vitrolinha_card_test LANGUAGES C)
 
+# Exercita o backend SD sobre o mesmo FatFs/disco emulado do monitor.
+set(VITROLINHA_STORAGE_SD ON)
 include(${CMAKE_CURRENT_LIST_DIR}/../vitrolinha_test.cmake)
 
-# O disco de mentira mora em tests/common/: o storage_card o usa também.
-target_include_directories(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../common)
-
 target_sources(app PRIVATE
-  ${CMAKE_CURRENT_LIST_DIR}/../common/fake_disk.c
+  src/fake_disk.c
   src/main.c
 )

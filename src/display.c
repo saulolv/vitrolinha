@@ -5,9 +5,12 @@
 #include "vitrolinha/card.h"
 #include "vitrolinha/display.h"
 #include "vitrolinha/storage.h"
-#include "vitrolinha/storage_fake.h"
 #include "vitrolinha/track.h"
+#include "vitrolinha/parser_csv.h"
+#include "vitrolinha/tone.h"
 
+#include <stddef.h>
+#include <stdint.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/gpio.h>
@@ -47,7 +50,7 @@ static const struct device *const encoder_dev = DEVICE_DT_GET(ENCODER_NODE);
 LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
 
 /** Tamanho dos buffers temporários utilizados para armazenar textos. */
-#define BUFFER_SIZE 64
+#define BUFFER_SIZE 512
 
 /**
  * @brief Habilita o teste de desempenho do display.
@@ -81,6 +84,8 @@ typedef struct {
 
     /** Barra utilizada para representar o progresso da reprodução. */
     lv_obj_t *bar;
+
+    uint8_t *content;
 } cb_data;
 
 /** Indica se um evento de clique foi recebido. */
@@ -188,7 +193,9 @@ static void display_demo_timer_cb(lv_timer_t *timer) {
  * @retval -ENODEV  Dispositivo de display não está pronto.
  * @retval outro    Erro retornado por `display_blanking_off()`.
  */
-int display_init(void) {
+int display_init(struct track_meta *meta, uint8_t *out, size_t meta_size) {
+
+
     int err = 0;
 
     if (!device_is_ready(display_dev)) {
@@ -235,7 +242,7 @@ int display_init(void) {
 
     /* Inicializa a tela e os componentes da aplicação. */
     screen_init();
-    app();
+    app(meta, out, meta_size);
 
 #endif
 
@@ -308,12 +315,56 @@ static void bar_timer_cb(lv_timer_t *timer) {
  *
  * @param e Evento de entrada recebido do LVGL.
  */
+
+static int play_music(size_t index, uint8_t *content) {
+
+  int loaded = storage_load(index, content, LIBRARY_MAX);
+
+  if (loaded < 0) {
+      LOG_ERR("Falha ao carregar track: %d", loaded);
+      return loaded;
+  }
+
+  size_t csv_length = (size_t)loaded;
+
+  struct parser_csv parser;
+  struct parser_csv_error p_error;
+
+  int rc = parser_csv_init(&parser, content, csv_length, &p_error);
+
+  if (rc != 0) {
+      LOG_ERR("Erro no parser: %d, linha: %zu, coluna: %zu",
+              rc, p_error.line, p_error.column);
+      return -1;
+  }
+
+  struct playback_event event;
+
+  while ((rc = parser_csv_next(&parser, &event)) > 0) {
+      LOG_INF("OFFSET: %u us | FREQ: %u Hz",
+              event.offset_us, event.freq_hz);
+
+      tone_set_frequency(event.freq_hz);
+      /* tone_set_frequency(event.freq_hz); */
+      k_msleep(event.offset_us/1000U);
+  }
+
+  tone_set_frequency(0);
+
+  if (rc < 0) {
+      LOG_ERR("Erro ao iterar sobre os eventos: %d", rc);
+  }
+  return 0;
+}
+
 static void event_cb(lv_event_t *e) {
     cb_data *local_data = lv_event_get_user_data(e);
 
     lv_obj_t *music_label = local_data->label;
     lv_obj_t *bar =
-        local_data->bar; /* TODO: refletir o estado real da música. */
+        local_data->bar;
+
+    uint8_t *content = local_data->content;
 
     lv_obj_t *roller = lv_event_get_target_obj(e);
     lv_indev_t *indev = lv_indev_get_act();
@@ -338,6 +389,7 @@ static void event_cb(lv_event_t *e) {
 
     LOG_INF("Buffer after: %s\n", playing_music);
 
+    uint32_t index = lv_roller_get_selected(roller);
     /*
      * Cria o timer na primeira seleção.
      * O retorno evita executar as operações seguintes nessa chamada.
@@ -346,6 +398,8 @@ static void event_cb(lv_event_t *e) {
         bar_timer = lv_timer_create(bar_timer_cb, 500, bar);
         return;
     }
+
+    play_music(index, content);
 
     /* Reinicia o progresso quando a seleção é alterada. */
     if (lv_strcmp(playing_music, buf)) {
@@ -360,52 +414,101 @@ static void event_cb(lv_event_t *e) {
     }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Armazenamento de faixas                                                    */
-/* -------------------------------------------------------------------------- */
-
 /**
- * @brief Obtém os nomes e conteúdos das faixas disponíveis.
+ * @brief Concatena os nomes das faixas em uma string para o LVGL Roller.
  *
- * Percorre as faixas do armazenamento de teste, carrega seus conteúdos
- * e concatena os respectivos nomes em uma string, separados por quebras
- * de linha.
+ * Os nomes das faixas válidas são concatenados e separados por '\n',
+ * conforme o formato esperado por lv_roller_set_options().
  *
- * A implementação utiliza o armazenamento falso e deverá ser adaptada
- * quando o suporte ao armazenamento real for implementado.
+ * O buffer resultante sempre é terminado em '\0' quando a operação
+ * é concluída com sucesso.
  *
- * @param name    Buffer que receberá os nomes das faixas.
- * @param content Vetor de ponteiros para os buffers de conteúdo.
+ * @param formatted_names Buffer que receberá os nomes formatados.
+ * @param capacity       Capacidade total do buffer, em bytes.
+ * @param meta           Array com os metadados das faixas.
+ * @param meta_size      Quantidade de elementos acessíveis em meta.
  *
- * @retval 0                      Operação concluída.
- * @retval K_ERR_STACK_CHK_FAIL   Arquivo maior que o limite permitido.
+ * @retval 0         Operação concluída.
+ * @retval -EINVAL   Argumentos inválidos ou nome sem terminador nulo.
+ * @retval -ENOSPC   Espaço insuficiente no buffer.
+ * @retval -ENOENT   Nenhuma faixa válida encontrada.
  *
- * @warning Os elementos de `content` devem apontar para buffers válidos
- *          com capacidade de pelo menos `STORAGE_FILE_MAX` bytes.
+ * @note O campo meta[i].name deve ser um array de caracteres com
+ *       tamanho fixo e terminado em '\0'.
  */
-static int get_name_content(char *name, uint8_t **content) {
-    struct track_meta *trackMeta =
-        (struct track_meta *)malloc(sizeof(struct track_meta) * 10);
-
-    for (size_t i = 0; i < 5; i++) {
-        /* int file_size = storage_load(i, content[i], STORAGE_FILE_MAX); */
-        int file_size = 3;
-
-        if (file_size > (int)STORAGE_FILE_MAX) {
-            return K_ERR_STACK_CHK_FAIL;
-        }
-
-        /* int ret_scan = storage_scan(trackMeta, 10, 0); */
-        /* LOG_INF("ret_scan: %d\n", ret_scan); */
-
-        /* Concatena o nome da faixa e uma quebra de linha. */
-        lv_strcat(name, "Test");
-        lv_strcat(name, "\n");
+static int format_names(char *formatted_names, size_t capacity,
+                        const struct track_meta *meta, size_t meta_size)
+{
+    if (formatted_names == NULL || meta == NULL || capacity == 0U) {
+        return -EINVAL;
     }
 
-    /* Remove a última quebra de linha da lista de nomes. */
-    name[lv_strnlen(name, 35) - 1] =
-        '\0'; /* TODO: adaptar ao carregamento das faixas reais. */
+    formatted_names[0] = '\0';
+
+    size_t used = 0U;
+    size_t count = 0U;
+
+    for (size_t i = 0U; i < meta_size; i++) {
+
+        if (!meta[i].valid) {
+            continue;
+        }
+
+        /* Verifica se o nome possui terminador nulo dentro do array. */
+        const char *name = meta[i].name;
+        const size_t name_capacity = sizeof(meta[i].name);
+        const char *terminator = memchr(name, '\0', name_capacity);
+
+        if (terminator == NULL) {
+            formatted_names[0] = '\0';
+            return -EINVAL;
+        }
+
+        size_t name_len = (size_t)(terminator - name);
+
+        if (name_len == 0U) {
+            formatted_names[0] = '\0';
+            return -EINVAL;
+        }
+
+        /* Adiciona separador somente entre opções. */
+        size_t separator_len = (count > 0U) ? 1U : 0U;
+
+        /*
+         * Verifica o espaço disponível, reservando também
+         * um byte para o terminador nulo.
+         */
+        size_t remaining = capacity - used;
+
+        if (separator_len >= remaining) {
+            formatted_names[0] = '\0';
+            return -ENOSPC;
+        }
+
+        remaining -= separator_len;
+
+        if (name_len >= remaining) {
+            formatted_names[0] = '\0';
+            return -ENOSPC;
+        }
+
+        /* Insere a quebra de linha entre as opções. */
+        if (separator_len > 0U) {
+            formatted_names[used++] = '\n';
+        }
+
+        /* Copia o nome da faixa. */
+        memcpy(&formatted_names[used], name, name_len);
+
+        used += name_len;
+        formatted_names[used] = '\0';
+
+        count++;
+    }
+
+    if (count == 0U) {
+        return -ENOENT;
+    }
 
     return 0;
 }
@@ -480,34 +583,9 @@ static void screen_init(void) {
  * @param e Evento de clique recebido do LVGL.
  */
 #if defined(CONFIG_BOARD_ZBOOK)
-
-static void card_changed(enum card_state state) {
-    LOG_INF("Cartao mudou para: %s", card_state_name(state));
-}
-
-static void card_report(void) {
-    int err;
-
-    /* Observar antes de inicializar, para não perder a transição de quem
-     * liga a placa com o cartão já no soquete.
-     */
-    card_observe(card_changed);
-
-    err = card_init();
-    if (err != 0) {
-        LOG_ERR("Monitor do cartao nao subiu: %d", err);
-        return;
-    }
-
-    LOG_INF("Cartao: %s (ponto de montagem %s)",
-            card_state_name(card_get_state()), CARD_MOUNT_POINT);
-}
-
 static void clicked_cb(lv_event_t *e) {
     lv_obj_t *obj = lv_event_get_target_obj(e);
     lv_group_t *g = lv_obj_get_group(obj);
-
-    card_report();
 
     if (g != NULL) {
         lv_group_set_editing(g, true);
@@ -542,7 +620,7 @@ static void clicked_cb(lv_event_t *e) {
  *       um intervalo entre seleções, dependendo da implementação do
  *       decodificador de MP3 para PCM.
  */
-static void app(void) {
+static void app(struct track_meta *meta, uint8_t *content, size_t meta_size) {
     /* Estilos utilizados pelos componentes da interface. */
     static lv_style_t style_roller_main;
     static lv_style_t style_roller_selected;
@@ -554,11 +632,15 @@ static void app(void) {
 
     static bool inited = false;
 
-    uint8_t *content[STORAGE_FILE_MAX];
 
-    if (get_name_content(names, content)) {
-        LOG_ERR("File too large");
+    int err = format_names(names, sizeof(names), meta, meta_size);
+
+    if (err != 0) {
+        LOG_ERR("Falha ao formatar nomes das faixas: %d", err);
+        return;
     }
+
+    LOG_INF("Opcoes do Roller:\n%s", names);
 
     if (!inited) {
         /* Estilo principal do roller. */
@@ -666,6 +748,7 @@ static void app(void) {
 
     global_data.label = music_label;
     global_data.bar = bar;
+    global_data.content = content;
 
     /* lv_obj_add_event_cb(roller, event_cb, LV_EVENT_KEY, &global_data); */
     lv_obj_add_event_cb(roller, event_cb, LV_EVENT_VALUE_CHANGED, &global_data);

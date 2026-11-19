@@ -71,6 +71,21 @@ int parser_csv_init(struct parser_csv *parser, const uint8_t *buffer,
 		    size_t length, struct parser_csv_error *error);
 
 /**
+ * @brief Valida e converte o CSV inteiro em uma única passagem.
+ * @param events Vetor de destino, incluindo espaço para o silêncio final.
+ * @param capacity Capacidade do vetor em eventos.
+ * @param count Recebe a quantidade de eventos; zero se a conversão falhar.
+ * @param total_us Recebe a duração total; zero se a conversão falhar.
+ * @param error Diagnóstico opcional, como em parser_csv_init().
+ * @return 0 no sucesso; -ENOSPC se faltar espaço; demais erros como em init.
+ * @note Descartar os eventos em caso de erro. Após sucesso, o vetor independe
+ *       do buffer CSV. Executar no loader, nunca no callback do timer.
+ */
+int parser_csv_decode(const uint8_t *buffer, size_t length,
+		      struct playback_event *events, size_t capacity,
+		      size_t *count, uint32_t *total_us, struct parser_csv_error *error);
+
+/**
  * @brief Obtém o próximo evento, incluindo o silêncio final da faixa.
  * @param parser Iterador inicializado com sucesso.
  * @param out Evento de destino; só é válido quando o retorno for 1.

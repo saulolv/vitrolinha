@@ -30,25 +30,17 @@
 extern "C" {
 #endif
 
-/**
- * @brief Nome do disco do cartão no `disk_access`.
- *
- * É o `disk-name` do nó `sdhc0` da ZBook. No alvo de simulação o mesmo nome
- * chega por `CONFIG_FS_FATFS_CUSTOM_MOUNT_POINTS`, para que o caminho seja
- * idêntico nos dois alvos.
- */
+/** @brief Nome usado por disk_access, sem os delimitadores do caminho FAT. */
 #define CARD_DISK_NAME "SD"
 
 /**
- * @brief Ponto de montagem do cartão, prefixo de todo caminho dentro dele.
+ * @brief Ponto de montagem do cartão.
  *
- * Derivado de ::CARD_DISK_NAME, para que os dois não possam deixar de casar.
- * A barra é exigência do subsistema de arquivos; os **dois-pontos** são do
- * FatFs, e não são enfeite. O Zephyr entrega ao FatFs o caminho sem a barra,
- * e o FatFs só reconhece o volume pelo prefixo `SD:`. Sem ele a montagem
- * ainda funciona — cai no volume padrão —, mas `SD/FURELIS.TXT` é lido como
- * o arquivo `FURELIS.TXT` dentro de um diretório `SD` que não existe, e
- * nenhum arquivo do cartão abre.
+ * O `disk-name` do nó `sdhc0` da ZBook é `"SD"`, e o subsistema de arquivos
+ * exige a barra inicial e o identificador de volume FAT terminado em ':'.
+ * No alvo de simulação o mesmo nome chega por
+ * `CONFIG_FS_FATFS_CUSTOM_MOUNT_POINTS`, para que o caminho seja idêntico nos
+ * dois alvos.
  */
 #define CARD_MOUNT_POINT "/" CARD_DISK_NAME ":"
 
@@ -70,7 +62,8 @@ enum card_state {
 /**
  * @brief Notificação de mudança de estado.
  *
- * Chamada **na thread do monitor**, só quando o estado muda de fato, e já com
+ * Chamada pela thread que executa card_refresh (normalmente o monitor),
+ * quando o estado muda ou uma troca de mídia é detectada, e já com
  * a trava interna do módulo solta — então pode chamar qualquer coisa deste
  * cabeçalho sem risco de impasse. Não pode bloquear nem demorar: enquanto ela
  * roda, o monitor não observa o cartão.
@@ -98,13 +91,16 @@ void card_observe(card_observer_t observer);
  *
  * Faz uma avaliação síncrona antes de voltar, de modo que
  * @ref card_get_state já responda a verdade quando esta função retornar, e
- * só então cria a thread que observa inserção e remoção.
+ * só então cria a thread que aguarda interrupções nas duas bordas de sd_cd.
+ * A thread aguarda 20 ms sem novas bordas antes de montar/desmontar.
+ * Sem sd_cd (simulador comum), avalia uma vez e não cria monitor periódico.
  *
  * @retval 0         Monitor de pé. O estado inicial está em
  *                   @ref card_get_state — inclusive ::CARD_ABSENT, que não é
  *                   erro de inicialização.
  * @retval -EALREADY Já inicializado. Chamar duas vezes não cria um segundo
  *                   monitor.
+ * @retval outro     Erro ao configurar o GPIO ou sua interrupção.
  */
 int card_init(void);
 
@@ -132,7 +128,7 @@ bool card_ready(void);
  * @brief Reavalia o cartão agora, montando ou desmontando se preciso.
  *
  * O monitor chama isto sozinho; a aplicação só precisa chamar para forçar uma
- * tentativa fora da cadência do monitor.
+ * avaliação sem esperar a interrupção e o debounce do monitor.
  *
  * Transições possíveis:
  *
@@ -142,6 +138,9 @@ bool card_ready(void);
  * | ::CARD_ABSENT | dentro | ::CARD_READY ou ::CARD_UNREADABLE | tenta montar |
  * | ::CARD_UNREADABLE | dentro | ::CARD_UNREADABLE | **não** tenta de novo |
  * | ::CARD_READY | dentro | ::CARD_READY | nada |
+ *
+ * Uma remoção registrada pela interrupção invalida a montagem anterior,
+ * mesmo que o cartão já tenha sido reinserido quando a avaliação executar.
  *
  * A linha que importa é a terceira: um cartão que não montou não passa a
  * montar sozinho, e insistir a cada varredura só gastaria o barramento. A
@@ -158,42 +157,6 @@ bool card_ready(void);
  *          própria e prioridade baixa.
  */
 enum card_state card_refresh(void);
-
-/**
- * @brief Empresta o volume montado: enquanto durar, ninguém o desmonta.
- *
- * Existe porque o FatFs roda sem reentrância e o `fs_unmount` não espera um
- * `fs_read` em curso noutra thread. Sem o empréstimo, um cartão puxado no
- * meio de uma varredura faria o monitor desmontar o volume por baixo da
- * leitura, com o objeto de trabalho do FatFs sendo zerado enquanto outra
- * thread ainda o usa.
- *
- * Com o empréstimo, o monitor espera: a remoção é vista na primeira sondagem
- * depois de @ref card_release. Até lá, as leituras de quem pegou o volume
- * emprestado falham com erro, que é o que um cartão fora do soquete deve
- * produzir.
- *
- * Quem pega emprestado devolve com @ref card_release, e só quando esta função
- * devolveu 0. Durante o empréstimo, não chamar @ref card_refresh: a trava é
- * recursiva, e a avaliação desmontaria o volume que o próprio chamador está
- * usando.
- *
- * @retval 0       Volume montado e emprestado.
- * @retval -ENODEV Soquete vazio. Nada a devolver.
- * @retval -EIO    Cartão presente e ilegível. Nada a devolver.
- *
- * @warning **Pode bloquear**, pelo tempo de uma montagem em curso no monitor
- *          (até 1500 ms). Nunca da thread `player` nem do callback do
- *          temporizador.
- *
- * @see docs/adr/0009-a-varredura-empresta-o-volume.md
- */
-int card_acquire(void);
-
-/**
- * @brief Devolve o volume emprestado por @ref card_acquire.
- */
-void card_release(void);
 
 /**
  * @brief Nome do estado, para log e para tela.
