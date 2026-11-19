@@ -96,6 +96,14 @@ struct player_snapshot {
 	 * bits porque o arquivo cabe em `STORAGE_FILE_MAX` bytes.
 	 */
 	uint16_t error_line;
+
+	/**
+	 * @brief Coluna, a partir de 1, do byte que a validação recusou.
+	 *
+	 * 0 junto com @ref error_line. É o que localiza o erro num RTTTL, que
+	 * costuma ser uma linha só.
+	 */
+	uint16_t error_column;
 };
 
 /** @brief Valor de repouso: parado, no início, sem faixa. */
@@ -103,6 +111,7 @@ struct player_snapshot {
 	{                                                                      \
 		.state = PLAYER_STOPPED, .base_us = 0, .total_us = 0,          \
 		.track = TRACK_NONE, .load_error = 0, .error_line = 0,         \
+		.error_column = 0,                                             \
 	}
 
 /**

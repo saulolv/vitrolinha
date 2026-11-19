@@ -19,7 +19,8 @@
 /* Um arquivo de STORAGE_FILE_MAX bytes não tem mais linhas do que bytes, então
  * a linha do erro cabe no uint16_t do instantâneo sem saturar.
  */
-BUILD_ASSERT(STORAGE_FILE_MAX <= UINT16_MAX, "error_line do instantâneo é de 16 bits");
+BUILD_ASSERT(STORAGE_FILE_MAX <= UINT16_MAX,
+	     "error_line e error_column do instantâneo são de 16 bits");
 
 /**
  * @brief Pilha da thread `player`.
@@ -106,6 +107,7 @@ static void select_track(int track)
 	/* Antes do stop_at, para a parada já sair publicada sem o erro antigo. */
 	state.load_error = 0;
 	state.error_line = 0;
+	state.error_column = 0;
 	stop_at(0);
 	int err = loader_request(track, &request_id);
 
@@ -204,6 +206,7 @@ static void check_load(void)
 		 */
 		state.load_error = (int16_t)(failure != 0 ? failure : -EIO);
 		state.error_line = (uint16_t)result.error_line;
+		state.error_column = (uint16_t)result.error_column;
 		(void)loader_cancel(request_id);
 		request_id = 0;
 		stop_at(0);

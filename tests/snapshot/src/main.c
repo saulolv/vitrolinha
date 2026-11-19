@@ -43,6 +43,7 @@ ZTEST(snapshot, test_estado_inicial_e_repouso)
 	zassert_equal(0U, got.total_us);
 	zassert_equal(0, got.load_error, "repouso nao e falha de carga");
 	zassert_equal(0U, got.error_line);
+	zassert_equal(0U, got.error_column);
 }
 
 ZTEST(snapshot, test_publica_e_le_de_volta)

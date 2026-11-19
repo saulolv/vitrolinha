@@ -309,6 +309,23 @@ static char track_marker(size_t i, int16_t playing)
 	return ((int)i == playing) ? '>' : ' ';
 }
 
+/**
+ * @brief Maior texto de rótulo, com o terminador: "> " e um nome de 23
+ *        bytes, ou "linha 4096 col 4096".
+ */
+#define LABEL_TEXT_SIZE 32U
+
+/** @brief Rótulos que @ref label_set atualiza: as linhas, 2 no rodapé, 3 na reprodução. */
+#define LABEL_COUNT (LIBRARY_ROWS + 2U + 3U)
+
+BUILD_ASSERT(LABEL_TEXT_SIZE > (2U + TRACK_NAME_MAX), "nome com marcador não cabe na cópia");
+
+/** @brief Cópia do texto pedido de cada rótulo; ver @ref label_create. */
+static char label_shadows[LABEL_COUNT][LABEL_TEXT_SIZE];
+
+/** @brief Cópias já entregues na montagem corrente das telas. */
+static size_t label_shadows_used;
+
 static void label_set(lv_obj_t *label, const char *text);
 
 /**
@@ -340,7 +357,7 @@ static void list_render(void)
 	if (library_count == 0U) {
 		lv_obj_remove_flag(rows[0], LV_OBJ_FLAG_HIDDEN);
 		label_set(rows[0], (library_error != 0) ? storage_error_text(library_error)
-							: "Biblioteca vazia");
+							: "Nenhuma faixa");
 	}
 
 	/* A barra de rolagem: altura proporcional à janela, posição à dela. Só
@@ -465,9 +482,31 @@ INPUT_CALLBACK_DEFINE(NULL, toggle_button_cb, NULL);
 /* -------------------------------------------------------------------------- */
 
 /** @brief Só reescreve o rótulo quando o texto muda, para não redesenhar à toa. */
+/**
+ * @brief Cria um rótulo cujo texto @ref label_set compara antes de reescrever.
+ *
+ * O texto pedido fica numa cópia própria, apontada pelo user_data, e não é
+ * relido do rótulo: com reticências o LVGL reescreve o texto guardado,
+ * trocando o fim por `...`, e a comparação nunca bateria com um nome longo.
+ */
+static lv_obj_t *label_create(lv_obj_t *parent)
+{
+	lv_obj_t *label = lv_label_create(parent);
+	char *shadow = label_shadows[label_shadows_used++];
+
+	shadow[0] = '\0';
+	lv_obj_set_user_data(label, shadow);
+	lv_label_set_text(label, "");
+	return label;
+}
+
+/** @brief Só reescreve o rótulo quando o texto muda, para não redesenhar à toa. */
 static void label_set(lv_obj_t *label, const char *text)
 {
-	if (strcmp(lv_label_get_text(label), text) != 0) {
+	char *shadow = lv_obj_get_user_data(label);
+
+	if (strcmp(shadow, text) != 0) {
+		strncpy(shadow, text, LABEL_TEXT_SIZE - 1U);
 		lv_label_set_text(label, text);
 	}
 }
@@ -510,9 +549,12 @@ static void playback_update(const struct player_snapshot *snap, uint64_t now_us)
 	label_set(state_label, state_text(snap));
 
 	if (snap->load_error != 0) {
-		/* No lugar do tempo, onde o arquivo quebrou, quando se sabe. */
+		/* No lugar do tempo, onde o arquivo quebrou, quando se sabe. A
+		 * coluna é o que localiza o erro num RTTTL, de uma linha só.
+		 */
 		if (snap->error_line != 0U) {
-			snprintf(text, sizeof(text), "linha %u", snap->error_line);
+			snprintf(text, sizeof(text), "linha %u col %u", snap->error_line,
+				 snap->error_column);
 		} else {
 			text[0] = '\0';
 		}
@@ -608,9 +650,10 @@ static void refresh_timer_cb(lv_timer_t *timer)
 	static struct player_snapshot logged = SNAPSHOT_IDLE_INITIALIZER;
 
 	if (memcmp(&snap, &logged, sizeof(snap)) != 0) {
-		LOG_INF("Player: estado %d, faixa %d, %u/%u ms, erro %d (linha %u)", snap.state,
-			snap.track, snapshot_elapsed_us(&snap, now_us) / 1000U,
-			snap.total_us / 1000U, snap.load_error, snap.error_line);
+		LOG_INF("Player: estado %d, faixa %d, %u/%u ms, erro %d (linha %u col %u)",
+			snap.state, snap.track, snapshot_elapsed_us(&snap, now_us) / 1000U,
+			snap.total_us / 1000U, snap.load_error, snap.error_line,
+			snap.error_column);
 		logged = snap;
 	}
 
@@ -783,13 +826,13 @@ static void mini_build(void)
 	/* O nome cresce até o tempo; um nome comprido termina em reticências
 	 * e o tempo continua à vista.
 	 */
-	mini_name = lv_label_create(row);
+	mini_name = label_create(row);
 	lv_obj_set_flex_grow(mini_name, 1);
+	lv_obj_set_height(mini_name, MINI_ROW_HEIGHT);
 	lv_label_set_long_mode(mini_name, LV_LABEL_LONG_MODE_DOTS);
-	lv_label_set_text(mini_name, CHOOSE_TRACK);
+	label_set(mini_name, CHOOSE_TRACK);
 
-	mini_time = lv_label_create(row);
-	lv_label_set_text(mini_time, "");
+	mini_time = label_create(row);
 
 	lv_obj_add_flag(mini_icon, LV_OBJ_FLAG_HIDDEN);
 	lv_obj_add_flag(mini_time, LV_OBJ_FLAG_HIDDEN);
@@ -851,11 +894,15 @@ static void list_build(void)
 	lv_obj_add_event_cb(list, list_event_cb, LV_EVENT_KEY, NULL);
 
 	for (size_t r = 0; r < LIBRARY_ROWS; r++) {
-		rows[r] = lv_label_create(list);
+		rows[r] = label_create(list);
 		lv_obj_remove_style_all(rows[r]);
 		lv_obj_add_style(rows[r], &style_row, 0);
 		lv_obj_add_style(rows[r], &style_row_cursor, LV_STATE_CHECKED);
-		lv_obj_set_width(rows[r], lv_pct(100));
+		/* Altura fixa: as reticências só valem com ela. Com altura
+		 * automática o LVGL quebra o nome comprido em duas linhas, e a
+		 * linha empurra o resto da lista.
+		 */
+		lv_obj_set_size(rows[r], lv_pct(100), ROW_HEIGHT);
 		lv_label_set_long_mode(rows[r], LV_LABEL_LONG_MODE_DOTS);
 	}
 
@@ -890,15 +937,15 @@ static void library_build(void)
 
 static lv_obj_t *playback_label(void)
 {
-	lv_obj_t *label = lv_label_create(playback_screen);
+	lv_obj_t *label = label_create(playback_screen);
 
-	/* Largura fixa e reticências: um nome comprido não quebra em duas linhas
-	 * nem empurra o resto da tela.
+	/* Tamanho fixo e reticências: um nome comprido não quebra em duas
+	 * linhas nem empurra o resto da tela. Sem a altura fixa, as reticências
+	 * não valem.
 	 */
-	lv_obj_set_width(label, LV_HOR_RES);
+	lv_obj_set_size(label, LV_HOR_RES, ROW_HEIGHT);
 	lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
 	lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-	lv_label_set_text(label, "");
 
 	return label;
 }
@@ -942,6 +989,11 @@ static void playback_build(void)
 static void ui_build(void)
 {
 	lv_obj_t *previous = lv_screen_active();
+
+	/* As telas antigas só são apagadas no fim, mas nada mais escreve nelas:
+	 * as cópias de texto podem ser reaproveitadas pelas novas.
+	 */
+	label_shadows_used = 0U;
 	lv_obj_t *old_library = library_screen;
 	lv_obj_t *old_playback = playback_screen;
 	lv_group_t *old_library_group = library_group;

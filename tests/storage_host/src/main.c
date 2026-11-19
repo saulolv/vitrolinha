@@ -77,7 +77,8 @@ ZTEST(storage_host, test_listagem_e_leitura_csv)
 	write_file("zeta.csv", "0,1", 3);
 	write_file("beta.CsV", csv, sizeof(csv) - 1U);
 	write_file("alfa.csv", "440,1", 5);
-	write_file("ignorar.txt", csv, sizeof(csv) - 1U);
+	write_file("ignorar.mp3", csv, sizeof(csv) - 1U);
+	write_file("abc", csv, sizeof(csv) - 1U);
 	zassert_ok(mkdirat(directory_fd, "subpasta.csv", 0700));
 	zassert_ok(symlinkat("alfa.csv", directory_fd, "atalho.csv"));
 	zassert_equal(1, storage_scan(tracks, 1, NULL));
@@ -99,6 +100,53 @@ ZTEST(storage_host, test_listagem_e_leitura_csv)
 	zassert_equal(sizeof(csv) - 1U, storage_load(1, buffer, sizeof(buffer)));
 	zassert_mem_equal(csv, buffer, sizeof(csv) - 1U);
 	zassert_equal(0xa5, buffer[sizeof(csv) - 1U]);
+}
+
+ZTEST(storage_host, test_listagem_rtttl_com_nome_do_cabecalho)
+{
+	static uint8_t big[STORAGE_FILE_MAX + 1U];
+	static const char rtttl[] = "Fur Elise:d=8,o=5,b=125:e6,d#6,e6";
+	static const char anonymous[] = ":d=4:c";
+	static const char headless[] = "e6,d#6,e6";
+
+	memset(big, 'c', sizeof(big));
+	big[0] = 'G';
+	big[1] = ':';
+	big[2] = ':';
+
+	write_file("a.rtx", rtttl, sizeof(rtttl) - 1U);
+	write_file("b.RTT", rtttl, sizeof(rtttl) - 1U);
+	write_file("c.txt", anonymous, sizeof(anonymous) - 1U);
+	write_file("d.txt", headless, sizeof(headless) - 1U);
+	write_file("e.rtx", "", 0U);
+	write_file("f.rtx", big, sizeof(big));
+	write_file("g.csv", csv, sizeof(csv) - 1U);
+
+	zassert_equal(7, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+
+	/* O nome da tela sai do cabeçalho, como no cartão. */
+	zassert_str_equal("Fur Elise", tracks[0].name);
+	zassert_true(tracks[0].valid);
+	zassert_str_equal("Fur Elise", tracks[1].name, "extensao em maiusculas");
+	zassert_true(tracks[1].valid);
+
+	/* Cabeçalho sem nome: fica o do arquivo, e a faixa vale. */
+	zassert_str_equal("c", tracks[2].name);
+	zassert_true(tracks[2].valid);
+
+	/* Sem cabeçalho, vazio, ou maior que o buffer: listado e inválido, com
+	 * o nome do arquivo.
+	 */
+	zassert_str_equal("d", tracks[3].name);
+	zassert_false(tracks[3].valid);
+	zassert_str_equal("e", tracks[4].name);
+	zassert_false(tracks[4].valid);
+	zassert_str_equal("f", tracks[5].name);
+	zassert_false(tracks[5].valid);
+
+	/* O CSV segue com o nome do arquivo. */
+	zassert_str_equal("g", tracks[6].name);
+	zassert_true(tracks[6].valid);
 }
 
 ZTEST(storage_host, test_limites_de_biblioteca_e_buffer)

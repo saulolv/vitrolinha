@@ -239,3 +239,49 @@ ZTEST(track, test_meta_init_iguais_sao_identicos)
 	zassert_mem_equal(&a, &b, sizeof(a),
 			  "entradas iguais devem ser identicas byte a byte");
 }
+
+/** @brief Acha o nome em @p text e o compara com @p expected; NULL = sem cabeçalho. */
+static void expect_rtttl_name(const char *text, const char *expected)
+{
+	const char *name = NULL;
+	size_t len = 99U;
+	bool found = track_rtttl_name(text, strlen(text), &name, &len);
+
+	if (expected == NULL) {
+		zassert_false(found, "achou cabecalho em \"%s\"", text);
+		zassert_is_null(name, "saida tocada sem cabecalho");
+		zassert_equal(99U, len, "saida tocada sem cabecalho");
+		return;
+	}
+
+	zassert_true(found, "sem cabecalho em \"%s\"", text);
+	zassert_equal(strlen(expected), len, "\"%s\"", text);
+	zassert_mem_equal(expected, name, len, "\"%s\"", text);
+}
+
+ZTEST(track, test_rtttl_name_no_cabecalho)
+{
+	expect_rtttl_name("Fur Elise:d=8,o=5,b=125:e6", "Fur Elise");
+	expect_rtttl_name("x:", "x");
+	/* O que um editor de texto deixa em volta do nome. */
+	expect_rtttl_name("\xEF\xBB\xBF" "Fur Elise:d=8", "Fur Elise");
+	expect_rtttl_name("\r\n\n \tFur Elise \t:d=8", "Fur Elise");
+	/* Sem nome: vazio, e o chamador fica com o do arquivo. */
+	expect_rtttl_name(":d=4:c", "");
+	expect_rtttl_name("   :d=4:c", "");
+	/* Mais curto que o BOM, e só espaços. */
+	expect_rtttl_name("ab:", "ab");
+	expect_rtttl_name("  ", NULL);
+}
+
+ZTEST(track, test_rtttl_name_sem_cabecalho)
+{
+	/* Sem `:`, ou com a quebra de linha antes dele: o nome não ocupa duas
+	 * linhas, e o arquivo não é RTTTL.
+	 */
+	expect_rtttl_name("", NULL);
+	expect_rtttl_name("Fur Elise", NULL);
+	expect_rtttl_name("Fur\nElise:d=8", NULL);
+	expect_rtttl_name("Fur\rElise:d=8", NULL);
+	expect_rtttl_name("frequency_hz,duration_ms\n440,250\n", NULL);
+}

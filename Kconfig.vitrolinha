@@ -32,13 +32,28 @@ config VITROLINHA_STORAGE_FAKE
 	  Ver src/storage_fake.c.
 
 config VITROLINHA_STORAGE_HOST
-	bool "CSVs de uma pasta do computador"
+	bool "Faixas de uma pasta do computador"
 	depends on BOARD_NATIVE_SIM && EXTERNAL_LIBC
 	help
-	  Lista os .csv da pasta em VITROLINHA_MUSIC_DIR, ou de fixtures/music
-	  relativo ao diretório de execução, pela libc do computador. Só existe
-	  no simulador. Ver src/storage_host.c.
+	  Lista as faixas da pasta em VITROLINHA_MUSIC_DIR, ou de
+	  fixtures/music relativo ao diretório de execução, pela libc do
+	  computador. Só existe no simulador. Ver src/storage_host.c.
 
 endchoice
+
+config VITROLINHA_TRANSPOSE_MIN_HZ
+	int "Limiar da transposição por oitavas, em Hz (0 desliga)"
+	range 0 20000
+	default 0
+	help
+	  Um piezo é fraco abaixo de algumas centenas de hertz: as notas
+	  graves saem mais baixas, e a melodia, com volume irregular. Com o
+	  limiar ligado, o parser RTTTL sobe a faixa inteira em oitavas
+	  completas até a nota mais grave alcançá-lo, preservando os
+	  intervalos, e sem que a mais aguda passe do que o buzzer toca.
+
+	  Desligado até a etapa E1 medir a resposta do piezo da placa: o
+	  limiar sai dessa medição, e não de estimativa. O CSV nunca é
+	  transposto, porque o arquivo de calibração tem de tocar o que diz.
 
 endmenu

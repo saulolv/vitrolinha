@@ -5,13 +5,17 @@
  * A varredura seleciona VITROLINHA_MUSIC_DIR ou fixtures/music, relativo ao
  * diretório de execução. Pasta e índices ficam mantidos até a próxima
  * varredura. Uso exclusivo do contexto de armazenamento, fora do player.
- * O nome exibido vem do arquivo; valid indica candidato, ainda sem validação
- * musical. Apenas esta implementação ou storage_fake deve entrar no build.
+ * Faixas são os RTTTL (.txt, .rtx, .rtt) e os CSV (.csv), sem distinguir
+ * maiúsculas. O nome exibido do RTTTL vem do cabeçalho, pela mesma regra do
+ * cartão (@ref track_rtttl_name), e o RTTTL sem cabeçalho entra inválido; o
+ * CSV fica com o nome do arquivo, como no cartão. Apenas esta implementação
+ * ou storage_fake deve entrar no build.
  */
 
 #define _POSIX_C_SOURCE 200809L
 
 #include <vitrolinha/storage.h>
+#include <vitrolinha/track.h>
 
 #include <dirent.h>
 #include <errno.h>
@@ -23,9 +27,61 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <zephyr/sys/util.h>
+
 static char directory[PATH_MAX];
 static char filenames[LIBRARY_MAX][NAME_MAX + 1];
 static size_t track_count;
+
+/** @brief Extensões de faixa: as quatro têm três letras. */
+static const char *const extensions[] = {".txt", ".rtx", ".rtt", ".csv"};
+
+/** @brief O nome termina numa extensão de faixa? */
+static bool is_track_name(const char *name, size_t length)
+{
+	if (length < 4U) {
+		return false;
+	}
+
+	for (size_t i = 0U; i < ARRAY_SIZE(extensions); i++) {
+		if (strcasecmp(name + length - 4U, extensions[i]) == 0) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * @brief Preenche os metadados da faixa @p i, já na lista ordenada.
+ *
+ * O RTTTL é lido inteiro, pela própria carga, para achar o nome no
+ * cabeçalho: os arquivos têm poucos KB, e reaproveitar a carga mantém um só
+ * caminho de leitura. O que a carga recusa, ou que não tem cabeçalho, entra
+ * inválido com o nome do arquivo.
+ */
+static void describe_track(size_t i, struct track_meta *meta)
+{
+	static uint8_t content[STORAGE_FILE_MAX];
+	const char *name = filenames[i];
+	size_t name_len = strlen(name) - 4U;
+	bool valid = true;
+
+	if (strcasecmp(name + name_len, ".csv") != 0) {
+		int size = storage_load((int)i, content, sizeof(content));
+		const char *header;
+		size_t header_len;
+
+		valid = (size > 0) &&
+			track_rtttl_name((const char *)content, (size_t)size, &header, &header_len);
+		if (valid && (header_len > 0U)) {
+			name = header;
+			name_len = header_len;
+		}
+	}
+
+	track_meta_init(meta, (uint8_t)i, name, name_len, valid);
+}
 
 /** @brief Origem configurada para a próxima varredura. */
 static const char *configured_directory(void)
@@ -35,7 +91,7 @@ static const char *configured_directory(void)
 	return path != NULL ? path : "fixtures/music";
 }
 
-/** @brief Lista os primeiros CSVs regulares por nome, sem visitar subpastas. */
+/** @brief Lista as primeiras faixas regulares por nome, sem visitar subpastas. */
 int storage_scan(struct track_meta *out, size_t max, size_t *skipped)
 {
 	if (skipped != NULL) {
@@ -73,7 +129,7 @@ int storage_scan(struct track_meta *out, size_t max, size_t *skipped)
 		}
 		size_t length = strlen(entry->d_name);
 
-		if (length < 4U || strcasecmp(entry->d_name + length - 4U, ".csv") != 0) {
+		if (!is_track_name(entry->d_name, length)) {
 			continue;
 		}
 		struct stat info;
@@ -112,7 +168,7 @@ int storage_scan(struct track_meta *out, size_t max, size_t *skipped)
 		*skipped = found - track_count;
 	}
 	for (size_t i = 0; i < track_count; i++) {
-		track_meta_init(&out[i], i, filenames[i], strlen(filenames[i]) - 4U, true);
+		describe_track(i, &out[i]);
 	}
 	return (int)track_count;
 }
