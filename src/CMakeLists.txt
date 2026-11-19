@@ -26,6 +26,8 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/storage_error.c
   ${CMAKE_CURRENT_LIST_DIR}/track.c
   ${CMAKE_CURRENT_LIST_DIR}/parser_csv.c
+  ${CMAKE_CURRENT_LIST_DIR}/parser_rtttl.c
+  ${CMAKE_CURRENT_LIST_DIR}/parser.c
 )
 
 # Os botões de transporte. Condicional porque escutam o subsistema `input`,

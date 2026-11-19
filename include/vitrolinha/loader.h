@@ -1,6 +1,6 @@
 /**
  * @file loader.h
- * @brief Contrato: carga assíncrona de CSV e fornecimento de eventos.
+ * @brief Contrato: carga assíncrona de faixa e fornecimento de eventos.
  *
  * O loader é dono do buffer de STORAGE_FILE_MAX bytes, do parser e de
  * uma fila de capacidade fixa. Sua thread faz E/S e validação; o player
@@ -18,9 +18,8 @@
  * loader_poll_event_init() fica pronto quando o resultado de uma
  * solicitação fica disponível, e loader_get_result() o rearma.
  *
- * @note O loader só entende o formato CSV (`parser_csv`), o mesmo que o
- *       cartão e o `storage_host` listam. Com o `storage_fake`, cujas faixas
- *       embutidas são RTTTL, toda carga falha na validação.
+ * @note O formato sai do conteúdo, pela fachada @ref parser.h: RTTTL para as
+ *       músicas, CSV para a bancada e a calibração.
  */
 
 #ifndef VITROLINHA_LOADER_H_
@@ -45,7 +44,7 @@ struct loader_result {
 	int status;
 	/** @brief Duração em microssegundos; válida quando status for zero. */
 	uint32_t total_us;
-	/** @brief Linha do CSV que falhou, a partir de 1; zero se não aplicável. */
+	/** @brief Linha do arquivo que falhou, a partir de 1; zero se não aplicável. */
 	size_t error_line;
 };
 

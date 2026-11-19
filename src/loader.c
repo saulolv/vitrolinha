@@ -1,13 +1,13 @@
 /**
  * @file loader.c
- * @brief Worker proprietário do CSV/parser e produtor de uma fila de 32 eventos.
+ * @brief Worker proprietário do parser e produtor de uma fila de 32 eventos.
  *
  * Pedidos substituem a geração corrente sem esperar E/S. Somente o worker
  * reutiliza o buffer; resultados de gerações antigas nunca são publicados.
  * O spinlock protege apenas metadados e operações de fila sem espera.
  */
 #include <vitrolinha/loader.h>
-#include <vitrolinha/parser_csv.h>
+#include <vitrolinha/parser.h>
 #include <vitrolinha/storage.h>
 
 #include <errno.h>
@@ -36,7 +36,7 @@ K_SEM_DEFINE(work, 0, 1);
 static struct k_poll_signal ready_signal = K_POLL_SIGNAL_INITIALIZER(ready_signal);
 static struct k_spinlock lock;
 static uint8_t buffer[STORAGE_FILE_MAX];
-static struct parser_csv parser;
+static struct parser parser;
 static struct loader_result result;
 static uint32_t generation;
 static uint32_t active_id;
@@ -90,12 +90,12 @@ static void loader_worker(void *a, void *b, void *c)
 
 			worker_id = id;
 			if (rewind) {
-				status = parser_csv_rewind(&parser);
+				status = parser_rewind(&parser);
 			} else {
 				int size = storage_load(track, buffer, sizeof(buffer));
 
 				status = size < 0 ? size :
-					parser_csv_init(&parser, buffer, size, &error);
+					parser_init(&parser, buffer, size, &error);
 			}
 			key = k_spin_lock(&lock);
 			if (id != active_id) {
@@ -104,7 +104,7 @@ static void loader_worker(void *a, void *b, void *c)
 			}
 			result = (struct loader_result){
 				.track = track, .status = status, .error_line = error.line,
-				.total_us = status == 0 ? parser.total_us : 0,
+				.total_us = status == 0 ? parser_total_us(&parser) : 0,
 			};
 			if (status != 0) {
 				mark_ready();
@@ -129,7 +129,7 @@ static void loader_worker(void *a, void *b, void *c)
 			k_spin_unlock(&lock, key);
 
 			struct playback_event event;
-			int status = parser_csv_next(&parser, &event);
+			int status = parser_next(&parser, &event);
 
 			/* Só a geração corrente escreve na fila; uma substituída sai
 			 * pelo teste do topo do laço. O init validou o arquivo
@@ -142,7 +142,7 @@ static void loader_worker(void *a, void *b, void *c)
 				if (status == 1) {
 					(void)k_msgq_put(&events, &event, K_NO_WAIT);
 				}
-				finished = status != 1 || parser.final_event_emitted;
+				finished = status != 1 || parser_finished(&parser);
 			}
 			k_spin_unlock(&lock, key);
 		}
