@@ -101,6 +101,7 @@ CONFIG_INPUT_GPIO_QDEC=y
 CONFIG_INPUT_GPIO_KEYS=y
 CONFIG_DISPLAY=y
 CONFIG_SSD1306=y
+CONFIG_I2C_DW_CLOCK_SPEED=150                # o padrão 32 põe o I²C a ~2,2 MHz e corrompe a tela
 
 CONFIG_SYS_CLOCK_TICKS_PER_SEC=20000         # 50 us de quantização; ver temporização
 
@@ -463,7 +464,10 @@ de desenho trava as folgas apagadas.
 
 **O I²C a 100 kHz limita a taxa de quadros.** Um quadro cheio de 128x64 a 1 bpp
 são 1024 bytes, ~92 ms no barramento — os 10 fps do plano não cabem em quadro
-cheio. O overlay sobe para 400 kHz, o que leva para ~23 ms. Ainda assim, desenhar
+cheio. O overlay sobe para 400 kHz, o que leva para ~23 ms — o driver DesignWare
+entrega perto de 580 kHz, e só com `CONFIG_I2C_DW_CLOCK_SPEED=150`: sem ele o
+SCL é calculado contra 32 MHz, sai a ~2,2 MHz, e a tela corrompe pixels ao rolar
+a lista, sem erro nenhum no log. Ainda assim, desenhar
 por região suja é o que importa: mudar o rótulo de tempo e a barra de progresso
 são algumas centenas de bytes, não 1024. O quadro cheio só acontece na troca de
 tela.
