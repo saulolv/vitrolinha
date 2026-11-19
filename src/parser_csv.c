@@ -8,6 +8,7 @@
  */
 
 #include <vitrolinha/parser_csv.h>
+#include <vitrolinha/tone.h>
 
 #include <errno.h>
 
@@ -129,6 +130,13 @@ static int read_event(struct parser_csv *parser, struct playback_event *out,
 
 	if (duration == 0U) {
 		return fail(error, parser->line, duration_column, -EINVAL);
+	}
+
+	/* Recusada aqui, com a linha, e não pela saída: lá a nota só chegaria
+	 * no meio da reprodução, e a faixa pararia sem dizer por quê.
+	 */
+	if (!tone_frequency_supported(frequency)) {
+		return fail(error, parser->line, 1U, -ERANGE);
 	}
 
 	uint64_t next_offset = (uint64_t)parser->offset_us + (uint64_t)duration * 1000U;

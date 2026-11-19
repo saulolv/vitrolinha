@@ -55,6 +55,7 @@ static void *setup(void)
 {
 	struct track_meta tracks[LIBRARY_MAX];
 	const char invalid[] = "frequency_hz,duration_ms\n1000,0\n";
+	const char out_of_range[] = "frequency_hz,duration_ms\n440,100\n19,100\n";
 
 	zassert_not_null(mkdtemp(directory));
 	write_file("0.csv", escala, sizeof(escala));
@@ -70,8 +71,9 @@ static void *setup(void)
 		fputs("1000,10\n", file);
 	}
 	zassert_ok(fclose(file));
+	write_file("5.csv", out_of_range, sizeof(out_of_range) - 1);
 	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", directory, 1));
-	zassert_equal(5, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
+	zassert_equal(6, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
 	zassert_ok(loader_init());
 	zassert_ok(tone_init());
 	return NULL;
@@ -80,7 +82,7 @@ static void *setup(void)
 static void teardown(void *fixture)
 {
 	ARG_UNUSED(fixture);
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < 6; i++) {
 		char name[8];
 
 		snprintf(name, sizeof(name), "%d.csv", i);
@@ -145,6 +147,14 @@ ZTEST(playback, test_loader_substituicao_fila_e_reinicio)
 	zassert_equal(-EINVAL, result.status);
 	zassert_equal(2, result.error_line);
 	zassert_ok(loader_cancel(id));
+	/* Frequência que o buzzer recusaria: falha na carga, com a linha, e
+	 * não no meio da reprodução.
+	 */
+	zassert_ok(loader_request(5, &id));
+	result = await_load(id);
+	zassert_equal(-ERANGE, result.status);
+	zassert_equal(3, result.error_line);
+	zassert_ok(loader_cancel(id));
 }
 
 ZTEST(playback, test_trace_timestamps_exportacao_e_limite)
@@ -160,6 +170,11 @@ ZTEST(playback, test_trace_timestamps_exportacao_e_limite)
 
 	zassert_ok(tone_set_frequency(1000));
 	zassert_ok(tone_set_frequency(0));
+	/* A faixa da placa vale no simulador, e a recusa não entra na captura:
+	 * a leitura do índice 4, abaixo, confirma que nada foi registrado.
+	 */
+	zassert_equal(-ERANGE, tone_set_frequency(TONE_FREQ_MIN_HZ - 1U));
+	zassert_equal(-ERANGE, tone_set_frequency(TONE_FREQ_MAX_HZ + 1U));
 	zassert_equal(-EINVAL, playback_trace_record(start, 1000));
 	zassert_equal(-EINVAL, playback_trace_end(start));
 	zassert_equal(-EBUSY, playback_trace_read(0, &entry));

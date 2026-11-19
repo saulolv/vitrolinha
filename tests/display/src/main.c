@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief Testes da interface: lista, clique e barra de progresso.
+ * @brief Testes da interface: biblioteca, reprodução e a troca entre elas.
  *
  * A interface roda sobre um display de teste e um keypad que recebe teclas
  * pelo subsistema `input`, como no simulador. A biblioteca é uma pasta
@@ -46,10 +46,20 @@ static const struct device *const keypad_dev = DEVICE_DT_GET(DT_NODELABEL(lvgl_k
 static char directory[] = "/tmp/vitrolinha-display-XXXXXX";
 static char path[160];
 
-/** Os objetos que display_init() acabou de criar. */
+/** Os objetos que display_init() acabou de criar, nas duas telas. */
 struct ui {
-	lv_obj_t *roller;
-	lv_obj_t *label;
+	lv_obj_t *library;
+	lv_obj_t *list;
+	lv_obj_t *mini_bar;
+	lv_obj_t *mini_row;
+	lv_obj_t *divider;
+	lv_obj_t *mini_icon;
+	lv_obj_t *mini_name;
+	lv_obj_t *mini_time;
+	lv_obj_t *playback;
+	lv_obj_t *name;
+	lv_obj_t *state;
+	lv_obj_t *time;
 	lv_obj_t *bar;
 };
 
@@ -90,33 +100,11 @@ static void full_name(char *out, size_t size, size_t i)
 	snprintf(out, size, "f%02zu", i);
 }
 
-/**
- * @brief Aponta a biblioteca para @p dir e remonta a tela do zero.
- *
- * @param dir Subpasta do diretório temporário; pode não existir.
- * @return Os objetos da tela nova.
- */
-static struct ui start_ui(const char *dir)
+/** @brief Deixa passar um período da interface e roda os timers do LVGL. */
+static void refresh(void)
 {
-	lv_obj_t *screen = lv_screen_active();
-	lv_obj_t *container;
-	struct ui ui;
-
-	make_path(dir, NULL);
-	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", path, 1));
-
-	lv_obj_clean(screen);
-	zassert_ok(display_init());
-
-	ui.roller = lv_obj_get_child(screen, 0);
-	container = lv_obj_get_child(screen, 1);
-	ui.label = lv_obj_get_child(container, 0);
-	ui.bar = lv_obj_get_child(container, 1);
-
-	zassert_not_null(ui.roller);
-	zassert_not_null(ui.label);
-	zassert_not_null(ui.bar);
-	return ui;
+	k_msleep(DISPLAY_REFRESH_PERIOD_MS + 10);
+	lv_timer_handler();
 }
 
 /** @brief Pressiona e solta uma tecla, e deixa o LVGL processar as duas. */
@@ -127,11 +115,59 @@ static void tap(uint16_t code)
 	lv_indev_read(lvgl_input_get_indev(keypad_dev));
 }
 
-/** @brief Deixa passar um período da interface e roda os timers do LVGL. */
-static void refresh(void)
+/** @brief Aperta o botão de alternar telas e espera o timer atendê-lo. */
+static void toggle(void)
 {
-	k_msleep(DISPLAY_REFRESH_PERIOD_MS + 10);
-	lv_timer_handler();
+	zassert_ok(input_report_key(NULL, DISPLAY_TOGGLE_BUTTON, 1, true, K_FOREVER));
+	zassert_ok(input_report_key(NULL, DISPLAY_TOGGLE_BUTTON, 0, true, K_FOREVER));
+	refresh();
+}
+
+/**
+ * @brief Aponta a biblioteca para @p dir e remonta as telas do zero.
+ *
+ * Passa pela reprodução para guardar os objetos dela, e volta: a interface
+ * sobe na biblioteca, e é lá que cada teste começa.
+ *
+ * @param dir Subpasta do diretório temporário; pode não existir.
+ * @return Os objetos das telas novas.
+ */
+static struct ui start_ui(const char *dir)
+{
+	struct ui ui;
+
+	make_path(dir, NULL);
+	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", path, 1));
+	zassert_ok(display_init());
+
+	ui.library = lv_screen_active();
+	ui.list = lv_obj_get_child(ui.library, 0);
+	/* O filho 1 é a barra de rolagem da lista. */
+	ui.mini_bar = lv_obj_get_child(ui.library, 2);
+	ui.mini_row = lv_obj_get_child(ui.library, 3);
+	ui.divider = lv_obj_get_child(ui.library, 4);
+	ui.mini_icon = lv_obj_get_child(ui.mini_row, 0);
+	ui.mini_name = lv_obj_get_child(ui.mini_row, 1);
+	ui.mini_time = lv_obj_get_child(ui.mini_row, 2);
+
+	toggle();
+	ui.playback = lv_screen_active();
+	zassert_not_equal(ui.library, ui.playback, "o botao nao abriu a reproducao");
+	ui.name = lv_obj_get_child(ui.playback, 0);
+	ui.state = lv_obj_get_child(ui.playback, 1);
+	ui.time = lv_obj_get_child(ui.playback, 2);
+	ui.bar = lv_obj_get_child(ui.playback, 3);
+
+	toggle();
+	zassert_equal(ui.library, lv_screen_active());
+
+	zassert_not_null(ui.list);
+	zassert_not_null(ui.mini_time);
+	zassert_not_null(ui.name);
+	zassert_not_null(ui.state);
+	zassert_not_null(ui.time);
+	zassert_not_null(ui.bar);
+	return ui;
 }
 
 static void publish(uint32_t state, int16_t track, uint64_t base_us, uint32_t total_us)
@@ -146,9 +182,96 @@ static void publish(uint32_t state, int16_t track, uint64_t base_us, uint32_t to
 	snapshot_publish(&snap);
 }
 
+/** @brief Publica uma carga recusada, como o player faz ao recebê-la. */
+static void publish_error(int16_t track, int16_t err, uint16_t line)
+{
+	const struct player_snapshot snap = {
+		.state = PLAYER_STOPPED,
+		.track = track,
+		.load_error = err,
+		.error_line = line,
+	};
+
+	snapshot_publish(&snap);
+}
+
 static uint64_t now_us(void)
 {
 	return k_ticks_to_us_floor64(k_uptime_ticks());
+}
+
+/** @brief Uma linha do ícone do mini-player: distingue tocar, pausar e parar. */
+static uint8_t icon_row(lv_obj_t *icon, size_t row)
+{
+	const lv_image_dsc_t *dsc = lv_image_get_src(icon);
+
+	/* Depois dos 8 bytes de paleta, um byte por linha. */
+	return dsc->data[8U + row];
+}
+
+static bool hidden(lv_obj_t *obj)
+{
+	return lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN);
+}
+
+/** @brief Os textos das linhas visíveis da lista, um por linha, como no OLED. */
+static const char *list_text(const struct ui *ui)
+{
+	static char text[8 * (TRACK_NAME_MAX + 3U)];
+	size_t used = 0;
+
+	text[0] = '\0';
+	for (uint32_t i = 0; i < lv_obj_get_child_count(ui->list); i++) {
+		lv_obj_t *row = lv_obj_get_child(ui->list, i);
+
+		if (!hidden(row)) {
+			used += snprintf(&text[used], sizeof(text) - used, "%s%s",
+					 (used > 0U) ? "\n" : "", lv_label_get_text(row));
+		}
+	}
+	return text;
+}
+
+/** @brief Posição, entre as linhas visíveis, da linha em destaque; -1 se nenhuma. */
+static int focused(const struct ui *ui)
+{
+	for (uint32_t i = 0; i < lv_obj_get_child_count(ui->list); i++) {
+		if (lv_obj_has_state(lv_obj_get_child(ui->list, i), LV_STATE_CHECKED)) {
+			return (int)i;
+		}
+	}
+	return -1;
+}
+
+/** @brief Texto da linha em destaque. */
+static const char *focused_text(const struct ui *ui)
+{
+	return lv_label_get_text(lv_obj_get_child(ui->list, focused(ui)));
+}
+
+/** @brief Desenha a tela à mostra no display de teste. */
+static void draw(void)
+{
+	lv_obj_invalidate(lv_screen_active());
+	lv_refr_now(NULL);
+}
+
+/** @brief Diz se alguma coluna da linha @p y está acesa no OLED. */
+static bool row_lit(int y)
+{
+	for (int x = 0; x < 128; x++) {
+		if (fake_display_lit(x, y)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void expect_no_cmd(void)
+{
+	struct cmd received;
+
+	zassert_equal(-ENOMSG, cmd_get(&received, K_NO_WAIT), "sobrou comando na fila");
 }
 
 static void *setup(void)
@@ -218,13 +341,19 @@ static void before(void *fixture)
 
 ZTEST_SUITE(display, NULL, setup, before, NULL, teardown);
 
+/* -------------------------------------------------------------------------- */
+/* Biblioteca                                                                 */
+/* -------------------------------------------------------------------------- */
+
 ZTEST(display, test_lista_as_faixas_da_varredura_em_ordem)
 {
 	struct ui ui = start_ui("tres");
 
-	zassert_str_equal("a\nb\nc", lv_roller_get_options(ui.roller));
-	zassert_equal(0, lv_roller_get_selected(ui.roller));
-	zassert_str_equal("Nada tocando", lv_label_get_text(ui.label));
+	zassert_str_equal("  a\n  b\n  c", list_text(&ui));
+	zassert_equal(0, focused(&ui));
+	zassert_str_equal("Nada tocando", lv_label_get_text(ui.name));
+	zassert_str_equal("Parado", lv_label_get_text(ui.state));
+	zassert_str_equal("0:00 / 0:00", lv_label_get_text(ui.time));
 	zassert_equal(0, lv_bar_get_value(ui.bar));
 }
 
@@ -232,68 +361,117 @@ ZTEST(display, test_biblioteca_ausente_mostra_o_erro_da_varredura)
 {
 	struct ui ui = start_ui("nao-existe");
 
-	zassert_str_equal(storage_error_text(-ENODEV), lv_roller_get_options(ui.roller));
+	zassert_str_equal(storage_error_text(-ENODEV), list_text(&ui));
 }
 
 ZTEST(display, test_biblioteca_vazia_diz_que_esta_vazia)
 {
 	struct ui ui = start_ui("vazia");
 
-	zassert_str_equal("Biblioteca vazia", lv_roller_get_options(ui.roller));
+	/* Uma faixa no instantâneo não põe marcador numa lista sem faixas. */
+	publish(PLAYER_PLAYING, 0, now_us(), USEC_PER_SEC);
+	refresh();
+	zassert_str_equal("Biblioteca vazia", list_text(&ui));
 }
 
 ZTEST(display, test_biblioteca_cheia_mostra_so_as_32_primeiras)
 {
 	struct ui ui = start_ui("cheia");
-	char last[8];
-	const char *options;
 
-	full_name(last, sizeof(last), LIBRARY_MAX - 1U);
-	options = lv_roller_get_options(ui.roller);
+	/* Quatro linhas na tela, as primeiras da biblioteca. */
+	zassert_str_equal("  f00\n  f01\n  f02\n  f03", list_text(&ui));
 
-	zassert_equal(LIBRARY_MAX, lv_roller_get_option_count(ui.roller));
-	zassert_not_null(strstr(options, last));
-	zassert_is_null(strstr(options, "f32"));
+	/* Indo até o fim, a última é a 32.ª: a 33.ª ficou de fora. */
+	for (size_t i = 0; i < FULL_COUNT + 5U; i++) {
+		tap(INPUT_KEY_RIGHT);
+	}
+	zassert_str_equal("  f28\n  f29\n  f30\n  f31", list_text(&ui));
+	zassert_equal(3, focused(&ui));
 }
 
-ZTEST(display, test_girar_e_clicar_pede_a_faixa_selecionada)
+ZTEST(display, test_girar_e_clicar_toca_e_abre_a_reproducao)
 {
 	struct ui ui = start_ui("tres");
 	struct cmd received;
 
 	tap(INPUT_KEY_RIGHT);
-	zassert_equal(1, lv_roller_get_selected(ui.roller));
+	zassert_equal(1, focused(&ui));
+	zassert_equal(ui.library, lv_screen_active(), "girar nao troca de tela");
 
 	tap(INPUT_KEY_ENTER);
 	zassert_ok(cmd_get(&received, K_NO_WAIT));
 	zassert_equal(CMD_SELECT, received.kind);
 	zassert_equal(1, received.track);
+	expect_no_cmd();
+	zassert_equal(ui.playback, lv_screen_active());
 
-	/* O clique não tira o roller da edição: o giro continua selecionando. */
-	zassert_true(lv_group_get_editing(lv_obj_get_group(ui.roller)));
-	zassert_equal(-ENOMSG, cmd_get(&received, K_NO_WAIT));
+	/* De volta à lista, o destaque está onde ficou, e a lista segue em
+	 * edição: é assim que o giro do encoder chega a ela como seta.
+	 */
+	toggle();
+	zassert_equal(1, focused(&ui));
+	zassert_true(lv_group_get_editing(lv_obj_get_group(ui.list)));
 }
 
-ZTEST(display, test_clique_fora_do_grupo_ainda_pede_a_faixa)
+ZTEST(display, test_foco_para_nas_pontas_da_lista)
 {
 	struct ui ui = start_ui("tres");
-	struct cmd received;
 
-	lv_group_remove_obj(ui.roller);
-	lv_obj_send_event(ui.roller, LV_EVENT_CLICKED, NULL);
+	/* Sem dar a volta: no topo, subir não vai para o fim. */
+	tap(INPUT_KEY_LEFT);
+	zassert_equal(0, focused(&ui));
 
-	zassert_ok(cmd_get(&received, K_NO_WAIT));
-	zassert_equal(CMD_SELECT, received.kind);
-	zassert_equal(0, received.track);
+	tap(INPUT_KEY_RIGHT);
+	tap(INPUT_KEY_RIGHT);
+	tap(INPUT_KEY_RIGHT);
+	zassert_equal(2, focused(&ui));
+
+	/* Outras teclas não movem o destaque. */
+	lv_obj_send_event(ui.list, LV_EVENT_KEY, &(uint32_t){LV_KEY_ESC});
+	zassert_equal(2, focused(&ui));
+}
+
+ZTEST(display, test_lista_longa_rola_nas_bordas)
+{
+	struct ui ui = start_ui("cheia");
+
+	/* O destaque desce pelas linhas sem a lista se mexer. */
+	for (int i = 0; i < 3; i++) {
+		tap(INPUT_KEY_RIGHT);
+	}
+	zassert_equal(3, focused(&ui));
+	zassert_str_equal("  f03", focused_text(&ui));
+	zassert_str_equal("  f00\n  f01\n  f02\n  f03", list_text(&ui));
+
+	/* Passando da última linha, a lista rola uma, e o destaque fica nela. */
+	tap(INPUT_KEY_RIGHT);
+	zassert_equal(3, focused(&ui));
+	zassert_str_equal("  f04", focused_text(&ui));
+	zassert_str_equal("  f01\n  f02\n  f03\n  f04", list_text(&ui));
+
+	/* Subindo, o destaque sobe pelas linhas, e só rola no topo. */
+	for (int i = 0; i < 3; i++) {
+		tap(INPUT_KEY_LEFT);
+	}
+	zassert_equal(0, focused(&ui));
+	zassert_str_equal("  f01", focused_text(&ui));
+	tap(INPUT_KEY_LEFT);
+	zassert_equal(0, focused(&ui));
+	zassert_str_equal("  f00", focused_text(&ui));
 }
 
 ZTEST(display, test_clique_em_biblioteca_vazia_nao_pede_nada)
 {
 	struct ui ui = start_ui("vazia");
-	struct cmd received;
 
-	lv_obj_send_event(ui.roller, LV_EVENT_CLICKED, NULL);
-	zassert_equal(-ENOMSG, cmd_get(&received, K_NO_WAIT));
+	/* A mensagem não é uma faixa: sem destaque, e girar ou clicar nada faz. */
+	zassert_equal(-1, focused(&ui));
+	tap(INPUT_KEY_RIGHT);
+	zassert_equal(-1, focused(&ui));
+	lv_obj_send_event(ui.list, LV_EVENT_CLICKED, NULL);
+	tap(INPUT_KEY_ENTER);
+	expect_no_cmd();
+	zassert_equal(ui.library, lv_screen_active());
 }
 
 ZTEST(display, test_clique_com_fila_cheia_descarta_a_selecao)
@@ -305,18 +483,205 @@ ZTEST(display, test_clique_com_fila_cheia_descarta_a_selecao)
 		zassert_ok(cmd_post(CMD_PLAY_PAUSE, TRACK_NONE));
 	}
 
-	lv_obj_send_event(ui.roller, LV_EVENT_CLICKED, NULL);
+	lv_obj_send_event(ui.list, LV_EVENT_CLICKED, NULL);
 
 	for (size_t i = 0; i < CMD_QUEUE_DEPTH; i++) {
 		zassert_ok(cmd_get(&received, K_NO_WAIT));
 		zassert_equal(CMD_PLAY_PAUSE, received.kind);
 	}
-	zassert_equal(-ENOMSG, cmd_get(&received, K_NO_WAIT));
+	expect_no_cmd();
+
+	/* Nada foi pedido, então não há o que mostrar tocando. */
+	zassert_equal(ui.library, lv_screen_active());
 }
 
-ZTEST(display, test_barra_e_rotulo_seguem_o_instantaneo)
+ZTEST(display, test_marcador_segue_a_faixa_sem_mover_o_foco)
 {
 	struct ui ui = start_ui("tres");
+
+	tap(INPUT_KEY_RIGHT);
+	tap(INPUT_KEY_RIGHT);
+	zassert_equal(2, focused(&ui));
+
+	/* Seguinte e anterior pelos botões: o `>` anda, o foco de quem navega
+	 * fica onde estava.
+	 */
+	publish(PLAYER_PLAYING, 0, now_us(), USEC_PER_SEC);
+	refresh();
+	zassert_str_equal("> a\n  b\n  c", list_text(&ui));
+	zassert_equal(2, focused(&ui));
+
+	publish(PLAYER_PLAYING, 1, now_us(), USEC_PER_SEC);
+	refresh();
+	zassert_str_equal("  a\n> b\n  c", list_text(&ui));
+	zassert_equal(2, focused(&ui));
+
+	publish(PLAYER_STOPPED, TRACK_NONE, 0U, 0U);
+	refresh();
+	zassert_str_equal("  a\n  b\n  c", list_text(&ui));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Mini-player                                                                */
+/* -------------------------------------------------------------------------- */
+
+ZTEST(display, test_lista_e_mini_player_cabem_na_tela_sem_se_sobrepor)
+{
+	struct ui ui = start_ui("tres");
+
+	int32_t line = lv_font_get_line_height(lv_obj_get_style_text_font(ui.list, 0));
+
+	lv_obj_update_layout(ui.library);
+
+	/* Quatro linhas inteiras da fonte no alto, a divisória e a barra abaixo
+	 * da lista, o rodapé abaixo da barra com altura para uma linha sem
+	 * cortar, e tudo dentro dos 64 px. Foi este teste que mostrou que a
+	 * linha da UNSCII-8 tem 9 px, e não 8: com 2 px de espaçamento a lista
+	 * invadia a barra.
+	 */
+	zassert_equal(0, lv_obj_get_y(ui.list));
+	zassert_equal(4 * line, lv_obj_get_height(ui.list), "linha de %d px", line);
+	zassert_true(lv_obj_get_y(ui.divider) > lv_obj_get_height(ui.list),
+		     "divisoria sobre a lista");
+	zassert_equal(128, lv_obj_get_width(ui.divider));
+	zassert_true(lv_obj_get_y(ui.mini_bar) >
+		     lv_obj_get_y(ui.divider) + lv_obj_get_height(ui.divider),
+		     "barra sobre a divisoria");
+	zassert_true(lv_obj_get_y(ui.mini_row) >
+		     lv_obj_get_y(ui.mini_bar) + lv_obj_get_height(ui.mini_bar),
+		     "rodape sobre a barra");
+	zassert_true(lv_obj_get_height(ui.mini_row) >= line, "rodape corta o texto");
+	zassert_equal(64, lv_obj_get_y(ui.mini_row) + lv_obj_get_height(ui.mini_row));
+
+	/* A barra do mini-player é a da reprodução, mais baixa: mesma largura,
+	 * centralizada.
+	 */
+	int32_t x = lv_obj_get_x(ui.mini_bar);
+	int32_t width = lv_obj_get_width(ui.mini_bar);
+
+	lv_obj_update_layout(ui.playback);
+	zassert_equal(lv_obj_get_width(ui.bar), width);
+	zassert_true(width < 128, "barra sem margem");
+	zassert_within(128 - (x + width), x, 1, "barra fora do centro");
+}
+
+ZTEST(display, test_desenho_da_biblioteca_sem_sobras)
+{
+	struct ui ui = start_ui("cheia");
+
+	/* Foco no meio da lista e uma faixa tocando: o caso mais cheio. */
+	tap(INPUT_KEY_RIGHT);
+	tap(INPUT_KEY_RIGHT);
+	publish(PLAYER_PLAYING, 1, now_us(), 4U * USEC_PER_SEC);
+	refresh();
+	draw();
+	fake_display_dump("biblioteca");
+
+	int32_t list_end = lv_obj_get_y(ui.list) + lv_obj_get_height(ui.list);
+	int32_t divider = lv_obj_get_y(ui.divider);
+	int32_t bar_top = lv_obj_get_y(ui.mini_bar);
+	int32_t bar_end = bar_top + lv_obj_get_height(ui.mini_bar);
+	int32_t row_top = lv_obj_get_y(ui.mini_row);
+
+	/* A divisória acesa de ponta a ponta, e as folgas em volta dela e da
+	 * barra apagadas. Foi uma folga acesa — o contorno de foco do tema, 2 px
+	 * por fora do roller — que apareceu no OLED como uma faixa colada na
+	 * barra.
+	 */
+	for (int x = 0; x < 128; x++) {
+		zassert_true(fake_display_lit(x, divider), "divisoria apagada em x=%d", x);
+	}
+	for (int32_t y = list_end; y < divider; y++) {
+		zassert_false(row_lit(y), "folga acesa na linha %d, acima da divisoria", y);
+	}
+	for (int32_t y = divider + 1; y < bar_top; y++) {
+		zassert_false(row_lit(y), "folga acesa na linha %d, acima da barra", y);
+	}
+	for (int32_t y = bar_end; y < row_top; y++) {
+		zassert_false(row_lit(y), "folga acesa na linha %d, abaixo da barra", y);
+	}
+
+	/* O destaque é a linha inteira acesa, da borda esquerda até a barra de
+	 * rolagem, que fica acesa na borda direita.
+	 */
+	lv_area_t focus;
+
+	lv_obj_get_coords(lv_obj_get_child(ui.list, 2), &focus);
+	zassert_true(fake_display_lit(focus.x1, focus.y1), "destaque nao comeca na borda");
+	zassert_equal(0, focus.x1);
+	zassert_true(fake_display_lit(focus.x2, focus.y1), "destaque nao chega ao fim da linha");
+	zassert_false(fake_display_lit(focus.x2 + 1, focus.y1),
+		      "destaque encosta na barra de rolagem");
+	zassert_true(fake_display_lit(127, 0), "sem barra de rolagem na lista longa");
+
+	toggle();
+	draw();
+	fake_display_dump("reproducao");
+}
+
+ZTEST(display, test_mini_player_mostra_a_faixa_sem_sair_da_lista)
+{
+	struct ui ui = start_ui("tres");
+
+	/* Sem faixa: só o convite, sem ícone nem tempo. */
+	zassert_str_equal("Escolha a faixa", lv_label_get_text(ui.mini_name));
+	zassert_true(hidden(ui.mini_icon));
+	zassert_true(hidden(ui.mini_time));
+	zassert_equal(0, lv_bar_get_value(ui.mini_bar));
+
+	publish(PLAYER_PLAYING, 1, now_us(), 200U * USEC_PER_MSEC);
+	refresh();
+	zassert_equal(ui.library, lv_screen_active(), "o mini-player nao troca de tela");
+	zassert_false(hidden(ui.mini_icon));
+	zassert_false(hidden(ui.mini_time));
+	zassert_str_equal("b", lv_label_get_text(ui.mini_name));
+	zassert_str_equal("0:00", lv_label_get_text(ui.mini_time));
+	zassert_equal(0x60, icon_row(ui.mini_icon, 1), "esperava o icone de tocar");
+	zassert_within(lv_bar_get_value(ui.mini_bar), 550, 50);
+
+	/* A barra anda pelo relógio, e o ícone, igual, não é trocado. */
+	refresh();
+	zassert_true(lv_bar_get_value(ui.mini_bar) > 900);
+	zassert_equal(0x60, icon_row(ui.mini_icon, 1));
+
+	publish(PLAYER_PAUSED, 1, 62U * USEC_PER_SEC, 125U * USEC_PER_SEC);
+	refresh();
+	zassert_str_equal("1:02", lv_label_get_text(ui.mini_time));
+	zassert_equal(0x6c, icon_row(ui.mini_icon, 1), "esperava o icone de pausa");
+	zassert_equal(496, lv_bar_get_value(ui.mini_bar));
+
+	publish(PLAYER_STOPPED, 1, 125U * USEC_PER_SEC, 125U * USEC_PER_SEC);
+	refresh();
+	zassert_str_equal("2:05", lv_label_get_text(ui.mini_time));
+	zassert_equal(0x7c, icon_row(ui.mini_icon, 1), "esperava o icone de parado");
+	zassert_equal(1000, lv_bar_get_value(ui.mini_bar));
+
+	/* Carga recusada: o motivo é da tela de reprodução; aqui, só o aviso. */
+	publish_error(2, -EINVAL, 3U);
+	refresh();
+	zassert_str_equal("c", lv_label_get_text(ui.mini_name));
+	zassert_str_equal("erro", lv_label_get_text(ui.mini_time));
+	zassert_equal(0x7c, icon_row(ui.mini_icon, 1));
+	zassert_equal(0, lv_bar_get_value(ui.mini_bar));
+
+	publish(PLAYER_STOPPED, TRACK_NONE, 0U, 0U);
+	refresh();
+	zassert_str_equal("Escolha a faixa", lv_label_get_text(ui.mini_name));
+	zassert_true(hidden(ui.mini_icon));
+	zassert_true(hidden(ui.mini_time));
+	zassert_equal(0, lv_bar_get_value(ui.mini_bar));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reprodução                                                                 */
+/* -------------------------------------------------------------------------- */
+
+ZTEST(display, test_reproducao_mostra_nome_estado_tempo_e_barra)
+{
+	struct ui ui = start_ui("tres");
+
+	toggle();
+	zassert_equal(ui.playback, lv_screen_active());
 
 	/*
 	 * Faixa de 200 ms que começa agora: depois do período que a tela espera,
@@ -325,36 +690,182 @@ ZTEST(display, test_barra_e_rotulo_seguem_o_instantaneo)
 	 */
 	publish(PLAYER_PLAYING, 1, now_us(), 200U * USEC_PER_MSEC);
 	refresh();
-	zassert_str_equal("b", lv_label_get_text(ui.label));
+	zassert_str_equal("b", lv_label_get_text(ui.name));
+	zassert_str_equal("Tocando", lv_label_get_text(ui.state));
+	zassert_str_equal("0:00 / 0:00", lv_label_get_text(ui.time));
 	zassert_within(lv_bar_get_value(ui.bar), 550, 50);
 
 	/* Sem publicação nova a barra anda sozinha, pelo relógio: o player não
 	 * precisa publicar a cada nota para o progresso avançar.
 	 */
 	refresh();
-	zassert_str_equal("b", lv_label_get_text(ui.label));
 	zassert_true(lv_bar_get_value(ui.bar) > 900, "a barra parou sem publicacao nova");
 
-	/* Mesma faixa, pausada no fim: o rótulo fica, a barra vai a 1000. */
-	publish(PLAYER_PAUSED, 1, 2U * USEC_PER_SEC, 2U * USEC_PER_SEC);
+	/* Pausada: base_us guarda o decorrido, e o tempo sai em minutos. */
+	publish(PLAYER_PAUSED, 1, 62U * USEC_PER_SEC, 125U * USEC_PER_SEC);
 	refresh();
-	zassert_str_equal("b", lv_label_get_text(ui.label));
+	zassert_str_equal("Pausado", lv_label_get_text(ui.state));
+	zassert_str_equal("1:02 / 2:05", lv_label_get_text(ui.time));
+	zassert_equal(496, lv_bar_get_value(ui.bar));
+
+	/* Fim da faixa: parada, com a barra cheia. */
+	publish(PLAYER_STOPPED, 1, 125U * USEC_PER_SEC, 125U * USEC_PER_SEC);
+	refresh();
+	zassert_str_equal("Parado", lv_label_get_text(ui.state));
+	zassert_str_equal("2:05 / 2:05", lv_label_get_text(ui.time));
 	zassert_equal(1000, lv_bar_get_value(ui.bar));
 
 	/* Faixa fora da biblioteca não tem nome para mostrar. */
 	publish(PLAYER_STOPPED, (int16_t)LIBRARY_MAX, 0U, 0U);
 	refresh();
-	zassert_str_equal("Nada tocando", lv_label_get_text(ui.label));
+	zassert_str_equal("Nada tocando", lv_label_get_text(ui.name));
 
 	publish(PLAYER_PLAYING, 2, now_us(), USEC_PER_SEC);
 	refresh();
-	zassert_str_equal("c", lv_label_get_text(ui.label));
+	zassert_str_equal("c", lv_label_get_text(ui.name));
 
 	publish(PLAYER_STOPPED, TRACK_NONE, 0U, 0U);
 	refresh();
-	zassert_str_equal("Nada tocando", lv_label_get_text(ui.label));
+	zassert_str_equal("Nada tocando", lv_label_get_text(ui.name));
 	zassert_equal(0, lv_bar_get_value(ui.bar));
 }
+
+ZTEST(display, test_arquivo_recusado_mostra_o_erro_e_volta_a_biblioteca)
+{
+	struct ui ui = start_ui("tres");
+
+	toggle();
+	publish_error(1, -EINVAL, 3U);
+	refresh();
+	zassert_str_equal("b", lv_label_get_text(ui.name));
+	zassert_str_equal("Arquivo invalido", lv_label_get_text(ui.state));
+	zassert_str_equal("linha 3", lv_label_get_text(ui.time));
+	zassert_str_equal("  a\n! b\n  c", list_text(&ui));
+
+	/* Ainda na reprodução até o prazo, sem agendar a volta duas vezes. */
+	refresh();
+	zassert_equal(ui.playback, lv_screen_active());
+
+	k_msleep(DISPLAY_ERROR_MS);
+	lv_timer_handler();
+	zassert_equal(ui.library, lv_screen_active());
+
+	/* Frequência fora da faixa também é recusa do parser. Na biblioteca o
+	 * erro não agenda volta nenhuma: já se está nela.
+	 */
+	publish_error(0, -ERANGE, 0U);
+	refresh();
+	zassert_str_equal("! a\n! b\n  c", list_text(&ui));
+	zassert_equal(ui.library, lv_screen_active());
+
+	/* O `!` fica, e vence o `>` da faixa que volta a ser pedida. */
+	publish(PLAYER_PLAYING, 1, now_us(), USEC_PER_SEC);
+	refresh();
+	zassert_str_equal("! a\n! b\n  c", list_text(&ui));
+
+	/* Uma varredura nova esquece as recusas: a faixa 1, que segue no
+	 * instantâneo, volta a levar `>` em vez de `!`.
+	 */
+	ui = start_ui("tres");
+	zassert_str_equal("  a\n> b\n  c", list_text(&ui));
+}
+
+ZTEST(display, test_erro_do_cartao_nao_marca_a_faixa)
+{
+	struct ui ui = start_ui("tres");
+
+	toggle();
+	publish_error(0, -ENOENT, 0U);
+	refresh();
+	zassert_str_equal(storage_error_text(-ENOENT), lv_label_get_text(ui.state));
+	zassert_str_equal("", lv_label_get_text(ui.time));
+	zassert_str_equal("> a\n  b\n  c", list_text(&ui));
+}
+
+ZTEST(display, test_volta_do_erro_depois_de_sair_da_reproducao)
+{
+	struct ui ui = start_ui("tres");
+
+	toggle();
+	publish_error(2, -EINVAL, 2U);
+	refresh();
+
+	/* Saiu antes do prazo: quando ele vence, a biblioteca já está à mostra. */
+	toggle();
+	zassert_equal(ui.library, lv_screen_active());
+	k_msleep(DISPLAY_ERROR_MS);
+	lv_timer_handler();
+	zassert_equal(ui.library, lv_screen_active());
+}
+
+/* -------------------------------------------------------------------------- */
+/* Navegação entre telas                                                      */
+/* -------------------------------------------------------------------------- */
+
+ZTEST(display, test_botao_alterna_as_telas)
+{
+	struct ui ui = start_ui("tres");
+
+	toggle();
+	zassert_equal(ui.playback, lv_screen_active());
+	toggle();
+	zassert_equal(ui.library, lv_screen_active());
+
+	/* Soltar, outro botão e o giro do encoder não alternam. */
+	zassert_ok(input_report_key(NULL, DISPLAY_TOGGLE_BUTTON, 0, true, K_FOREVER));
+	zassert_ok(input_report_key(NULL, INPUT_BTN_0, 1, true, K_FOREVER));
+	zassert_ok(input_report_key(NULL, INPUT_BTN_0, 0, true, K_FOREVER));
+	zassert_ok(input_report_rel(NULL, INPUT_REL_WHEEL, 1, true, K_FOREVER));
+	refresh();
+	zassert_equal(ui.library, lv_screen_active());
+}
+
+ZTEST(display, test_encoder_na_reproducao_volta_a_biblioteca)
+{
+	struct ui ui = start_ui("tres");
+	const uint16_t keys[] = {INPUT_KEY_RIGHT, INPUT_KEY_LEFT, INPUT_KEY_ENTER};
+
+	ARRAY_FOR_EACH(keys, i) {
+		toggle();
+		zassert_equal(ui.playback, lv_screen_active(), "tecla %zu", i);
+
+		tap(keys[i]);
+		zassert_equal(ui.library, lv_screen_active(), "tecla %zu", i);
+
+		/* O giro e o clique que voltam não chegam à lista: o foco não
+		 * anda, e nenhuma faixa é pedida.
+		 */
+		zassert_equal(0, focused(&ui), "tecla %zu", i);
+		expect_no_cmd();
+	}
+}
+
+ZTEST(display, test_reiniciar_descarta_as_telas_anteriores)
+{
+	struct ui ui = start_ui("tres");
+
+	/* Na reprodução, com a volta do erro agendada. */
+	toggle();
+	publish_error(1, -EINVAL, 2U);
+	refresh();
+	zassert_equal(ui.playback, lv_screen_active());
+
+	struct ui fresh = start_ui("tres");
+
+	zassert_not_equal(ui.library, fresh.library);
+	zassert_equal(fresh.library, lv_screen_active());
+
+	/* A volta agendada foi apagada junto com as telas antigas: se não
+	 * fosse, dispararia sobre objetos já liberados.
+	 */
+	k_msleep(DISPLAY_ERROR_MS);
+	lv_timer_handler();
+	zassert_equal(fresh.library, lv_screen_active());
+}
+
+/* -------------------------------------------------------------------------- */
+/* Blanking                                                                   */
+/* -------------------------------------------------------------------------- */
 
 ZTEST(display, test_display_sem_blanking_ainda_sobe)
 {
