@@ -15,9 +15,8 @@
  * eles é devicetree e configuração, não código — é o que torna possível
  * desenvolver a interface e o armazenamento sem a placa em mãos.
  *
- * No simulador o `main` também põe o player de pé, e a seleção na tela toca
- * de verdade, para a captura em memória. Na placa o player ainda não existe:
- * faltam a saída PWM e o parser RTTTL, e a tela só lista a biblioteca.
+ * O `main` também põe o player de pé, e a seleção na tela toca de verdade:
+ * na placa, no buzzer; no simulador, para a captura em memória.
  */
 
 #include <vitrolinha/card.h>
@@ -35,14 +34,23 @@
 #include <zephyr/logging/log.h>
 
 /*
- * O player só entra no build onde há saída para ele: no simulador, a captura
- * em memória do tone_trace. A condição é a mesma de src/CMakeLists.txt; sem
- * ela, chamar player_init() não linkaria.
+ * O player só entra no build onde há saída para ele: na placa, o buzzer do
+ * tone_pwm; no simulador, a captura em memória do tone_trace. As condições
+ * são as mesmas de src/CMakeLists.txt; sem elas, chamar player_init() não
+ * linkaria.
  */
-#if defined(CONFIG_BOARD_NATIVE_SIM) && defined(CONFIG_EXTERNAL_LIBC) && defined(CONFIG_POLL)
+#if defined(CONFIG_BOARD_NATIVE_SIM) && defined(CONFIG_EXTERNAL_LIBC)
+#define VITROLINHA_HAS_TRACE 1
+#include <vitrolinha/playback_trace.h>
+#endif
+
+#if defined(CONFIG_BOARD_ZBOOK) && defined(CONFIG_PWM)
+#define VITROLINHA_HAS_PWM 1
+#endif
+
+#if defined(CONFIG_POLL) && (defined(VITROLINHA_HAS_TRACE) || defined(VITROLINHA_HAS_PWM))
 #define VITROLINHA_HAS_PLAYER 1
 #include <vitrolinha/loader.h>
-#include <vitrolinha/playback_trace.h>
 #include <vitrolinha/player.h>
 #include <vitrolinha/tone.h>
 #endif
@@ -246,10 +254,11 @@ static void cmd_report(void)
 /**
  * @brief Põe loader, saída e player de pé, na ordem que o player.h pede.
  *
- * A saída do simulador é a captura do @ref playback_trace.h, aberta aqui e
- * nunca fechada: comporta PLAYBACK_TRACE_CAPACITY trocas de tom por sessão.
- * Esgotada, o player recebe -ENOSPC da saída e para a faixa — o limite é da
- * bancada, não do player.
+ * Na placa a saída é o buzzer. No simulador é a captura do
+ * @ref playback_trace.h, aberta aqui e nunca fechada: comporta
+ * PLAYBACK_TRACE_CAPACITY trocas de tom por sessão. Esgotada, o player
+ * recebe -ENOSPC da saída e para a faixa — o limite é da bancada, não do
+ * player.
  *
  * Falha aqui não derruba o `main`: a tela continua listando a biblioteca.
  *
@@ -272,12 +281,14 @@ static void playback_start(int track_count)
 		return;
 	}
 
+#if defined(VITROLINHA_HAS_TRACE)
 	/* O mesmo relógio que o tone_trace usa para cada registro. */
 	err = playback_trace_begin(k_cyc_to_us_floor64(k_cycle_get_64()));
 	if (err != 0) {
 		LOG_ERR("Captura nao abriu: %d", err);
 		return;
 	}
+#endif
 
 	err = player_init(count);
 	if (err != 0) {
@@ -285,8 +296,7 @@ static void playback_start(int track_count)
 		return;
 	}
 
-	LOG_INF("Player: %zu faixa(s), captura de ate %u trocas de tom", count,
-		PLAYBACK_TRACE_CAPACITY);
+	LOG_INF("Player: %zu faixa(s)", count);
 }
 #endif
 
