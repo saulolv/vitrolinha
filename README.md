@@ -67,7 +67,9 @@ que é o teclado do host em vez de um pino.
 
 | Tecla | Efeito |
 |---|---|
-| `1` `2` `3` `4` | botões de transporte |
+| `1` | tocar / pausar |
+| `2` | alternar entre biblioteca e reprodução |
+| `3` `4` | faixa anterior / seguinte |
 | `Enter` | clique do encoder |
 | setas ← → | girar o encoder |
 

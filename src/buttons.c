@@ -12,12 +12,16 @@
  * aperto sai no console com o código, para a bancada descobrir qual botão é
  * qual e ajustar ::button_map.
  *
- * Reiniciar não é comando próprio: é ::CMD_STOP seguido de
- * ::CMD_PLAY_PAUSE, que o player já trata como "tocar de novo do começo",
- * a partir da cópia em RAM e sem ler o cartão.
+ * O botão ::DISPLAY_TOGGLE_BUTTON também passa por aqui, mas não é
+ * transporte: alterna as telas, e quem o atende é o `display.c`. Este
+ * módulo só o registra no console.
+ *
+ * Não há botão de reiniciar: no fim da faixa, tocar/pausar já recomeça do
+ * início, e clicar de novo a faixa na biblioteca também.
  */
 
 #include <vitrolinha/cmd.h>
+#include <vitrolinha/display.h>
 
 #include <zephyr/device.h>
 #include <zephyr/input/input.h>
@@ -26,43 +30,41 @@
 
 LOG_MODULE_REGISTER(buttons, LOG_LEVEL_INF);
 
-/** @brief Marca o fim da sequência de um botão que publica um comando só. */
+/** @brief Botão que não publica comando: o de alternar telas. */
 #define BUTTON_NO_CMD CMD_KIND_COUNT
 
-/**
- * @brief Comandos de cada botão, em ordem, indexados por `código - INPUT_BTN_0`.
- *
- * - tocar/pausar: pausa; apertado de novo, retoma de onde parou;
- * - reiniciar: volta a faixa ao começo e toca;
- * - anterior e seguinte: trocam de faixa, dando a volta nas pontas.
- */
-static const enum cmd_kind button_map[][2] = {
-	{CMD_PLAY_PAUSE, BUTTON_NO_CMD}, /* INPUT_BTN_0: tocar/pausar */
-	{CMD_STOP, CMD_PLAY_PAUSE},      /* INPUT_BTN_1: reiniciar */
-	{CMD_PREV, BUTTON_NO_CMD},       /* INPUT_BTN_2: anterior */
-	{CMD_NEXT, BUTTON_NO_CMD},       /* INPUT_BTN_3: seguinte */
+/** @brief Comando de cada botão, indexado por `código - INPUT_BTN_0`. */
+static const enum cmd_kind button_map[] = {
+	CMD_PLAY_PAUSE, /* INPUT_BTN_0: tocar/pausar */
+	BUTTON_NO_CMD,  /* INPUT_BTN_1: alterna as telas, no display.c */
+	CMD_PREV,       /* INPUT_BTN_2: anterior */
+	CMD_NEXT,       /* INPUT_BTN_3: seguinte */
 };
 
+/* A linha sem comando da tabela tem de ser a do botão que o display atende;
+ * mudar um sem o outro deixaria um botão mudo, ou fazendo duas coisas.
+ */
+BUILD_ASSERT(DISPLAY_TOGGLE_BUTTON == INPUT_BTN_1,
+	     "button_map: mova BUTTON_NO_CMD para a linha de DISPLAY_TOGGLE_BUTTON");
+
 /**
- * @brief Publica os comandos de um botão apertado.
+ * @brief Publica o comando de um botão apertado.
  *
- * Nunca bloqueia: @ref cmd_post descarta com fila cheia. No reinício, se o
- * ::CMD_STOP não coube, o ::CMD_PLAY_PAUSE nem é tentado — sozinho ele
- * pausaria em vez de reiniciar.
+ * Nunca bloqueia: @ref cmd_post descarta com fila cheia.
  */
 static void button_pressed(uint16_t code)
 {
 	size_t index = (size_t)(code - INPUT_BTN_0);
-	const enum cmd_kind *cmds = button_map[index];
+	enum cmd_kind kind = button_map[index];
 	int err;
 
 	LOG_INF("Botao %zu apertado", index);
 
-	err = cmd_post(cmds[0], TRACK_NONE);
-	if ((err == 0) && (cmds[1] != BUTTON_NO_CMD)) {
-		err = cmd_post(cmds[1], TRACK_NONE);
+	if (kind == BUTTON_NO_CMD) {
+		return;
 	}
 
+	err = cmd_post(kind, TRACK_NONE);
 	if (err != 0) {
 		LOG_WRN("Comando do botao %zu descartado: %d", index, err);
 	}

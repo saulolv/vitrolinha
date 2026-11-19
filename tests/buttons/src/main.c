@@ -7,6 +7,7 @@
  */
 
 #include <vitrolinha/cmd.h>
+#include <vitrolinha/display.h>
 #include <vitrolinha/track.h>
 
 #include <errno.h>
@@ -67,13 +68,11 @@ ZTEST(buttons, test_botao_0_pausa_e_retoma)
 	expect_empty();
 }
 
-ZTEST(buttons, test_botao_1_reinicia)
+ZTEST(buttons, test_botao_de_alternar_tela_nao_publica_comando)
 {
-	/* Parar e tocar: o player recomeça a faixa da cópia em RAM. */
-	click(INPUT_BTN_1);
+	/* É da interface, não do transporte: quem o atende é o display.c. */
+	click(DISPLAY_TOGGLE_BUTTON);
 
-	expect_cmd(CMD_STOP);
-	expect_cmd(CMD_PLAY_PAUSE);
 	expect_empty();
 }
 
@@ -125,36 +124,5 @@ ZTEST(buttons, test_fila_cheia_descarta_a_pausa)
 	for (size_t i = 0U; i < CMD_QUEUE_DEPTH; i++) {
 		expect_cmd(CMD_NEXT);
 	}
-	expect_empty();
-}
-
-ZTEST(buttons, test_reinicio_sem_espaco_nao_vira_pausa)
-{
-	/* Sem lugar nem para o STOP, o PLAY_PAUSE não pode ir sozinho: viraria
-	 * pausa em vez de reinício.
-	 */
-	fill_queue(0U);
-
-	click(INPUT_BTN_1);
-
-	for (size_t i = 0U; i < CMD_QUEUE_DEPTH; i++) {
-		expect_cmd(CMD_NEXT);
-	}
-	expect_empty();
-}
-
-ZTEST(buttons, test_reinicio_com_uma_vaga_so_para)
-{
-	/* Coube o STOP, não coube o PLAY_PAUSE: a faixa para, e o aviso sai no
-	 * console. Parar é o menor dos males — não toca do lugar errado.
-	 */
-	fill_queue(1U);
-
-	click(INPUT_BTN_1);
-
-	for (size_t i = 0U; i < (CMD_QUEUE_DEPTH - 1U); i++) {
-		expect_cmd(CMD_NEXT);
-	}
-	expect_cmd(CMD_STOP);
 	expect_empty();
 }
