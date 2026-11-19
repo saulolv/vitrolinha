@@ -28,23 +28,34 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/loader.c
 )
 
-# A saída implementada nesta etapa é a captura no computador. O player
-# entra junto dela; a placa ainda precisa de uma implementação tone_pwm.
+# O player ainda é integrado somente aos testes do simulador. Na placa,
+# tone_pwm é compilado, mas não é chamado pela aplicação nesta etapa.
 if(CONFIG_BOARD_NATIVE_SIM AND CONFIG_EXTERNAL_LIBC)
   target_sources(app PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/player.c
     ${CMAKE_CURRENT_LIST_DIR}/tone_trace.c
     ${CMAKE_CURRENT_LIST_DIR}/playback_trace.c
   )
+elseif(CONFIG_BOARD_ZBOOK)
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/tone_pwm.c)
 endif()
 
-# O host usa a libc do computador; placa e testes existentes mantêm o fake.
+# A placa usa SD; o simulador pode usar host e os demais testes usam fake.
 option(VITROLINHA_STORAGE_HOST "Ler CSVs de uma pasta no native_sim" OFF)
+option(VITROLINHA_STORAGE_SD "Ler CSVs da raiz de /SD:" ${CONFIG_BOARD_ZBOOK})
+if(VITROLINHA_STORAGE_HOST AND VITROLINHA_STORAGE_SD)
+  message(FATAL_ERROR "Selecione apenas um storage: HOST ou SD")
+endif()
 if(VITROLINHA_STORAGE_HOST)
   if(NOT CONFIG_BOARD_NATIVE_SIM OR NOT CONFIG_EXTERNAL_LIBC)
     message(FATAL_ERROR "storage_host exige native_sim com CONFIG_EXTERNAL_LIBC")
   endif()
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_host.c)
+elseif(VITROLINHA_STORAGE_SD)
+  if(NOT CONFIG_FAT_FILESYSTEM_ELM)
+    message(FATAL_ERROR "storage_sd exige CONFIG_FAT_FILESYSTEM_ELM")
+  endif()
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_sd.c)
 else()
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/storage_fake.c)
 endif()

@@ -30,15 +30,19 @@
 extern "C" {
 #endif
 
+/** @brief Nome usado por disk_access, sem os delimitadores do caminho FAT. */
+#define CARD_DISK_NAME "SD"
+
 /**
  * @brief Ponto de montagem do cartão.
  *
  * O `disk-name` do nó `sdhc0` da ZBook é `"SD"`, e o subsistema de arquivos
- * exige a barra inicial. No alvo de simulação o mesmo nome chega por
+ * exige a barra inicial e o identificador de volume FAT terminado em ':'.
+ * No alvo de simulação o mesmo nome chega por
  * `CONFIG_FS_FATFS_CUSTOM_MOUNT_POINTS`, para que o caminho seja idêntico nos
  * dois alvos.
  */
-#define CARD_MOUNT_POINT "/SD"
+#define CARD_MOUNT_POINT "/" CARD_DISK_NAME ":"
 
 /**
  * @brief Os três estados do cartão.

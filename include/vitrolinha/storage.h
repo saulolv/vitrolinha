@@ -9,9 +9,8 @@
  * consome.
  *
  * Montar o cartão **não** faz parte da interface, de propósito: a
- * implementação que fala com o hardware monta sozinha na inicialização, e o
- * chamador só descobre o resultado por @ref storage_present ou pelo código
- * de erro da varredura.
+ * aplicação inicializa card.c antes de usar storage_sd. O chamador consulta
+ * a disponibilidade por @ref storage_present ou pelo resultado da varredura.
  *
  * @note Nada aqui pode ser chamado da thread `player` nem do callback do
  *       temporizador. É por isso que o arquivo é carregado inteiro antes de
@@ -63,7 +62,7 @@ int storage_scan(struct track_meta *out, size_t max);
  *
  * A carga é integral e antecipada. É o que faz a reprodução não acessar o
  * cartão nenhuma vez, satisfaz o RNF06 por construção, torna o RNF07 quase
- * gratuito e reduz "reiniciar a faixa" a reinterpretar do byte zero.
+ * gratuito. O loader conserva os eventos convertidos para reiniciar a faixa.
  *
  * @param track Índice devolvido por @ref storage_scan.
  * @param buf   Destino, de tamanho fixo. Convém que seja ::STORAGE_FILE_MAX.

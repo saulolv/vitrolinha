@@ -119,8 +119,8 @@ static void card_report(void)
 /**
  * @brief Exercita o contrato do @ref storage.h e lista a biblioteca no log.
  *
- * A origem depende do build: faixas embutidas (storage_fake) ou CSVs de uma
- * pasta do computador (storage_host). Ambas independem do estado do cartão.
+ * A origem depende do build: SD (storage_sd), pasta do computador
+ * (storage_host) ou faixas embutidas (storage_fake).
  *
  * @return Quantidade de faixas encontradas, ou erro negativo do contrato.
  */

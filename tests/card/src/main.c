@@ -16,11 +16,13 @@
 #include "fake_disk.h"
 
 #include <vitrolinha/card.h>
+#include <vitrolinha/storage.h>
 
 #include <errno.h>
 #include <string.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/fs/fs.h>
 #include <zephyr/ztest.h>
 
 /**
@@ -99,6 +101,75 @@ static void card_before(void *fixture)
 }
 
 ZTEST_SUITE(card, NULL, card_setup, card_before, NULL, NULL);
+
+/** @brief Grava dados no volume FAT usado pelo storage_sd sob teste. */
+static void write_file(const char *path, const void *data, size_t size)
+{
+	struct fs_file_t file;
+
+	fs_file_t_init(&file);
+	zassert_ok(fs_open(&file, path, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC));
+	zassert_equal(size, fs_write(&file, data, size));
+	zassert_ok(fs_close(&file));
+}
+
+ZTEST(card, test_storage_sd_catalogo_e_leitura)
+{
+	static const char csv[] = "frequency_hz,duration_ms\n1000,200\n0,100\n";
+	struct track_meta tracks[LIBRARY_MAX];
+	uint8_t buffer[sizeof(csv)];
+
+	fake_disk_insert(true);
+	zassert_equal(CARD_READY, settle(CARD_READY));
+	zassert_true(storage_present());
+	zassert_equal(0, storage_scan(tracks, ARRAY_SIZE(tracks)));
+	write_file(CARD_MOUNT_POINT "/ZETA.CSV", csv, sizeof(csv) - 1);
+	write_file(CARD_MOUNT_POINT "/ALFA.CSV", csv, sizeof(csv) - 1);
+	write_file(CARD_MOUNT_POINT "/IGNORAR.TXT", csv, sizeof(csv) - 1);
+	zassert_ok(fs_mkdir(CARD_MOUNT_POINT "/SUB.CSV"));
+	zassert_equal(1, storage_scan(tracks, 1));
+	zassert_str_equal("ALFA", tracks[0].name);
+	zassert_equal(2, storage_scan(tracks, ARRAY_SIZE(tracks)));
+	zassert_str_equal("ZETA", tracks[1].name);
+	zassert_equal(1, tracks[1].index);
+	zassert_equal(sizeof(csv) - 1, storage_load(1, buffer, sizeof(buffer)));
+	zassert_mem_equal(csv, buffer, sizeof(csv) - 1);
+	zassert_equal(-ENOENT, storage_load(2, buffer, sizeof(buffer)));
+	zassert_ok(fs_unlink(CARD_MOUNT_POINT "/ZETA.CSV"));
+	zassert_equal(-ENOENT, storage_load(1, buffer, sizeof(buffer)));
+	zassert_ok(fs_unlink(CARD_MOUNT_POINT "/ALFA.CSV"));
+	zassert_ok(fs_unlink(CARD_MOUNT_POINT "/IGNORAR.TXT"));
+	zassert_ok(fs_unlink(CARD_MOUNT_POINT "/SUB.CSV"));
+}
+
+ZTEST(card, test_storage_sd_limite_e_remocao)
+{
+	static uint8_t data[STORAGE_FILE_MAX + 1];
+	static uint8_t buffer[sizeof(data)];
+	struct track_meta tracks[LIBRARY_MAX];
+
+	fake_disk_insert(true);
+	zassert_equal(CARD_READY, settle(CARD_READY));
+	memset(data, 0x5a, sizeof(data));
+	write_file(CARD_MOUNT_POINT "/LIMITE.CSV", data, STORAGE_FILE_MAX);
+	write_file(CARD_MOUNT_POINT "/MAIOR.CSV", data, sizeof(data));
+	zassert_equal(2, storage_scan(tracks, ARRAY_SIZE(tracks)));
+	zassert_equal(STORAGE_FILE_MAX, storage_load(0, buffer, sizeof(buffer)));
+	zassert_mem_equal(data, buffer, STORAGE_FILE_MAX);
+	memset(buffer, 0xa5, sizeof(buffer));
+	zassert_equal(-EFBIG, storage_load(0, buffer, STORAGE_FILE_MAX - 1));
+	zassert_equal(-EFBIG, storage_load(1, buffer, sizeof(buffer)));
+	for (size_t i = 0; i < sizeof(buffer); i++) {
+		zassert_equal(0xa5, buffer[i]);
+	}
+	zassert_ok(fs_unlink(CARD_MOUNT_POINT "/LIMITE.CSV"));
+	zassert_ok(fs_unlink(CARD_MOUNT_POINT "/MAIOR.CSV"));
+	fake_disk_insert(false);
+	zassert_equal(CARD_ABSENT, settle(CARD_ABSENT));
+	zassert_false(storage_present());
+	zassert_equal(-ENODEV, storage_load(0, buffer, sizeof(buffer)));
+	zassert_equal(-ENODEV, storage_scan(tracks, ARRAY_SIZE(tracks)));
+}
 
 /* -------------------------------------------------------------------------
  * Inicialização
@@ -356,10 +427,8 @@ ZTEST(card, test_nome_de_estado_fora_da_enumeracao)
 
 ZTEST(card, test_ponto_de_montagem_comeca_com_barra)
 {
-	/* O módulo deriva o nome do disco do ponto de montagem, pulando o
-	 * primeiro byte. Se a barra sumir, o `disk_access` passa a ser
-	 * procurado por "D" e nada monta.
-	 */
+	/* disk_access usa SD; o FatFs precisa de /SD: nos caminhos de arquivo. */
 	zassert_equal('/', CARD_MOUNT_POINT[0]);
-	zassert_str_equal("SD", &CARD_MOUNT_POINT[1]);
+	zassert_str_equal("SD", CARD_DISK_NAME);
+	zassert_str_equal("SD:", &CARD_MOUNT_POINT[1]);
 }
