@@ -54,9 +54,9 @@ struct track_meta {
 	/**
 	 * @brief Nome exibido, sempre terminado em NUL.
 	 *
-	 * Vem do **cabeçalho RTTTL**, não do nome do arquivo: sem
-	 * `CONFIG_FS_FATFS_LFN` a leitura de diretório devolve 8.3 em
-	 * maiúsculas (`FURELIS.TXT`), ruim numa tela cujo único texto é este.
+	 * No cartão, é o nome 8.3 do arquivo sem a extensão (`FURELISE.CSV`
+	 * vira `FURELISE`): o CSV não tem campo de nome, e sem
+	 * `CONFIG_FS_FATFS_LFN` o diretório só entrega 8.3 em maiúsculas.
 	 */
 	char name[TRACK_NAME_MAX];
 
@@ -118,6 +118,34 @@ size_t track_name_copy(char *dst, size_t dst_size, const char *src, size_t src_l
  */
 void track_meta_init(struct track_meta *meta, uint8_t index, const char *name,
 		     size_t name_len, bool valid);
+
+/**
+ * @brief Bytes do começo do arquivo que bastam para achar o nome RTTTL.
+ *
+ * O nome útil tem 16 caracteres na tela e o campo, 23 bytes; 64 cobrem isso
+ * com folga para BOM, linhas em branco e espaços antes dele.
+ */
+#define TRACK_RTTTL_PEEK 64U
+
+/**
+ * @brief Acha o nome no começo de um cabeçalho RTTTL.
+ *
+ * O nome é tudo antes do primeiro `:`. Em volta dele vale o que um editor de
+ * texto costuma deixar: BOM de UTF-8 e linhas em branco antes, espaços dos
+ * dois lados. Uma quebra de linha **antes** do `:` diz que aquilo não é
+ * cabeçalho — o nome não ocupa duas linhas.
+ *
+ * É daqui que sai o nome mostrado na tela, e não do arquivo: sem nomes
+ * longos no FAT, o diretório devolve `FURELIS.TXT`.
+ *
+ * @param buf      Início do arquivo, ao menos o que couber em
+ *                 ::TRACK_RTTTL_PEEK.
+ * @param len      Quantos bytes de @p buf foram lidos.
+ * @param name     Recebe o começo do nome, dentro de @p buf.
+ * @param name_len Recebe o comprimento do nome, possivelmente zero.
+ * @return Verdadeiro se há cabeçalho; falso deixa as saídas intocadas.
+ */
+bool track_rtttl_name(const char *buf, size_t len, const char **name, size_t *name_len);
 
 #ifdef __cplusplus
 }

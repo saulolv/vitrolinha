@@ -95,3 +95,49 @@ void track_meta_init(struct track_meta *meta, uint8_t index, const char *name,
 	meta->index = index;
 	meta->valid = valid;
 }
+
+/** @brief Espaço ou tabulação: o que se apara em volta do nome. */
+static bool is_blank(char c)
+{
+	return (c == ' ') || (c == '\t');
+}
+
+/** @brief Fim de linha. Não pode aparecer dentro do nome. */
+static bool is_eol(char c)
+{
+	return (c == '\r') || (c == '\n');
+}
+
+bool track_rtttl_name(const char *buf, size_t len, const char **name, size_t *name_len)
+{
+	static const char bom[] = "\xEF\xBB\xBF";
+	size_t start = 0U;
+	size_t end;
+
+	if ((len >= (sizeof(bom) - 1U)) && (memcmp(buf, bom, sizeof(bom) - 1U) == 0)) {
+		start = sizeof(bom) - 1U;
+	}
+
+	while ((start < len) && (is_blank(buf[start]) || is_eol(buf[start]))) {
+		start++;
+	}
+
+	for (end = start; (end < len) && (buf[end] != ':'); end++) {
+		if (is_eol(buf[end])) {
+			return false;
+		}
+	}
+
+	if (end == len) {
+		return false;
+	}
+
+	while ((end > start) && is_blank(buf[end - 1U])) {
+		end--;
+	}
+
+	*name = &buf[start];
+	*name_len = end - start;
+
+	return true;
+}

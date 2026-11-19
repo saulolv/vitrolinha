@@ -2,10 +2,10 @@
  * @file storage.h
  * @brief Contrato: varredura e carga da biblioteca.
  *
- * Isola o cartão do resto do sistema. Nenhum outro módulo inclui cabeçalho
- * de sistema de arquivos, e nenhum outro módulo sabe que existe FAT, SPI ou
+ * Isola a origem dos arquivos do resto do sistema. Nenhum outro módulo inclui
+ * cabeçalho de sistema de arquivos, nem sabe que existe FAT, SPI ou
  * detecção de presença — o que é o que permite trocar a origem das faixas
- * (cartão, flash interna, dados embutidos no binário) sem tocar em quem as
+ * (cartão, pasta do computador, dados embutidos no binário) sem tocar em quem as
  * consome.
  *
  * Montar o cartão **não** faz parte da interface, de propósito: a
@@ -37,7 +37,7 @@ extern "C" {
 /**
  * @brief Tamanho do buffer de faixa, em bytes.
  *
- * Um RTTTL típico tem de 100 a 400 bytes; 4 KB cobrem cerca de mil notas.
+ * Limite comum às implementações, incluindo os CSVs no computador.
  * Arquivo maior é **rejeitado**, não truncado: meia melodia sem aviso é pior
  * do que uma mensagem de erro.
  */
@@ -65,7 +65,7 @@ extern "C" {
  * @return Quantidade de faixas escritas em @p out, de 0 a
  *         `min(max, LIBRARY_MAX)`, ou um erro negativo:
  * @retval -EINVAL @p out nulo ou @p max igual a zero.
- * @retval -ENODEV Sem cartão.
+ * @retval -ENODEV Sem cartão (no `storage_host`, pasta ausente).
  * @retval -EIO    O cartão está presente mas não pôde ser lido.
  *
  * @warning **Bloqueia.** No cartão, abre cada arquivo para ler o cabeçalho, e
@@ -82,7 +82,7 @@ int storage_scan(struct track_meta *out, size_t max, size_t *skipped);
  * gratuito e reduz "reiniciar a faixa" a reinterpretar do byte zero.
  *
  * Os bytes saem como estão no arquivo, BOM e quebras de linha incluídos: o
- * que é ou não RTTTL quem decide é o interpretador. Quando esta função volta,
+ * que é ou não faixa válida quem decide é o interpretador. Quando esta função volta,
  * nada da faixa fica aberto nem emprestado — o cartão pode sair do soquete na
  * nota seguinte.
  *
@@ -97,7 +97,7 @@ int storage_scan(struct track_meta *out, size_t max, size_t *skipped);
  * @retval -EINVAL @p buf nulo ou @p len igual a zero.
  * @retval -ENOENT @p track fora da biblioteca, ou o arquivo não está mais no
  *                 cartão.
- * @retval -ENODEV Sem cartão.
+ * @retval -ENODEV Sem cartão (no `storage_host`, pasta ausente).
  * @retval -EFBIG  O arquivo não cabe em @p len. **Nada foi escrito**: o
  *                 arquivo é rejeitado, nunca truncado.
  * @retval -EIO    Falha de leitura. @p buf pode ter sido escrito em parte.

@@ -14,10 +14,14 @@
  * Compila para os dois alvos: a ZBook P2 e o simulador. O que difere entre
  * eles é devicetree e configuração, não código — é o que torna possível
  * desenvolver a interface e o armazenamento sem a placa em mãos.
+ *
+ * O `main` também põe o player de pé, e a seleção na tela toca de verdade:
+ * na placa, no buzzer; no simulador, para a captura em memória.
  */
 
 #include <vitrolinha/card.h>
 #include <vitrolinha/cmd.h>
+#include <vitrolinha/display.h>
 #include <vitrolinha/library.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
@@ -29,6 +33,28 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+
+/*
+ * O player só entra no build onde há saída para ele: na placa, o buzzer do
+ * tone_pwm; no simulador, a captura em memória do tone_trace. As condições
+ * são as mesmas de src/CMakeLists.txt; sem elas, chamar player_init() não
+ * linkaria.
+ */
+#if defined(CONFIG_BOARD_NATIVE_SIM) && defined(CONFIG_EXTERNAL_LIBC)
+#define VITROLINHA_HAS_TRACE 1
+#include <vitrolinha/playback_trace.h>
+#endif
+
+#if defined(CONFIG_BOARD_ZBOOK) && defined(CONFIG_PWM)
+#define VITROLINHA_HAS_PWM 1
+#endif
+
+#if defined(CONFIG_POLL) && (defined(VITROLINHA_HAS_TRACE) || defined(VITROLINHA_HAS_PWM))
+#define VITROLINHA_HAS_PLAYER 1
+#include <vitrolinha/loader.h>
+#include <vitrolinha/player.h>
+#include <vitrolinha/tone.h>
+#endif
 
 LOG_MODULE_REGISTER(vitrolinha, LOG_LEVEL_INF);
 
@@ -133,10 +159,10 @@ static void card_report(void)
 /**
  * @brief Exercita o contrato do @ref library.h e lista a biblioteca no log.
  *
- * Quem responde depende do alvo: na placa, o cartão que o @ref card_report
+ * Quem responde depende do build: na placa, o cartão que o @ref card_report
  * acabou de montar; no simulador, a implementação de mentira, com duas faixas
- * embutidas. Esta função não sabe qual das duas — é o que a fronteira do
- * @ref storage.h compra.
+ * embutidas, ou os CSVs de uma pasta do computador (storage_host). Esta
+ * função não sabe qual — é o que a fronteira do @ref storage.h compra.
  *
  * @return Quantidade de faixas encontradas, ou `-ENODEV` sem biblioteca.
  */
@@ -184,8 +210,11 @@ static int library_report(void)
  * @brief Exercita o contrato do @ref snapshot.h.
  *
  * Publica um instantâneo de faixa tocando e o relê pelo mesmo caminho que a
- * `ui` usará, para conferir que a conversão de decorrido e de progresso
- * está de pé antes de existir tela.
+ * `ui` usa, para conferir que a conversão de decorrido e de progresso está
+ * de pé. Depois devolve o repouso: a tela lê o mesmo registro, e sem isso
+ * mostraria uma faixa de mentira tocando no primeiro minuto.
+ *
+ * Chamar antes de @ref playback_start: depois dele o registro é do player.
  */
 static void snapshot_report(void)
 {
@@ -195,10 +224,12 @@ static void snapshot_report(void)
 		.total_us = 60U * USEC_PER_SEC,
 		.track = 0,
 	};
+	const struct player_snapshot idle = SNAPSHOT_IDLE_INITIALIZER;
 	struct player_snapshot copy;
 
 	snapshot_publish(&playing);
 	snapshot_read(&copy);
+	snapshot_publish(&idle);
 
 	LOG_INF("Instantaneo: faixa %d, %u us de %u us (%u/1000)", copy.track,
 		snapshot_elapsed_us(&copy, 30U * USEC_PER_SEC), copy.total_us,
@@ -234,8 +265,59 @@ static void cmd_report(void)
 		received.track);
 }
 
+#if defined(VITROLINHA_HAS_PLAYER)
+/**
+ * @brief Põe loader, saída e player de pé, na ordem que o player.h pede.
+ *
+ * Na placa a saída é o buzzer. No simulador é a captura do
+ * @ref playback_trace.h, aberta aqui e nunca fechada: comporta
+ * PLAYBACK_TRACE_CAPACITY trocas de tom por sessão. Esgotada, o player
+ * recebe -ENOSPC da saída e para a faixa — o limite é da bancada, não do
+ * player.
+ *
+ * Falha aqui não derruba o `main`: a tela continua listando a biblioteca.
+ *
+ * @param track_count Faixas da varredura, ou erro negativo dela.
+ */
+static void playback_start(int track_count)
+{
+	size_t count = (track_count > 0) ? (size_t)track_count : 0U;
+	int err;
+
+	err = loader_init();
+	if (err != 0) {
+		LOG_ERR("Loader nao subiu: %d", err);
+		return;
+	}
+
+	err = tone_init();
+	if (err != 0) {
+		LOG_ERR("Saida de tom nao subiu: %d", err);
+		return;
+	}
+
+#if defined(VITROLINHA_HAS_TRACE)
+	/* O mesmo relógio que o tone_trace usa para cada registro. */
+	err = playback_trace_begin(k_cyc_to_us_floor64(k_cycle_get_64()));
+	if (err != 0) {
+		LOG_ERR("Captura nao abriu: %d", err);
+		return;
+	}
+#endif
+
+	err = player_init(count);
+	if (err != 0) {
+		LOG_ERR("Player nao subiu: %d", err);
+		return;
+	}
+
+	LOG_INF("Player: %zu faixa(s)", count);
+}
+#endif
+
 int main(void)
 {
+	int track_count;
 	int err;
 
 	LOG_INF("Vitrolinha %s em " CONFIG_BOARD_TARGET, APP_VERSION_STRING);
@@ -246,9 +328,23 @@ int main(void)
 	}
 
 	card_report();
-	(void)library_report();
+	track_count = library_report();
+
+	/* Os dois exercitam registros que o player toma para si ao subir. */
 	snapshot_report();
 	cmd_report();
+
+	/* Depois do cartão: a lista da tela sai da varredura do volume montado. */
+	err = display_init();
+	if (err != 0) {
+		return err;
+	}
+
+#if defined(VITROLINHA_HAS_PLAYER)
+	playback_start(track_count);
+#else
+	ARG_UNUSED(track_count);
+#endif
 
 	LOG_INF("Bring-up completo. LED de sinal de vida piscando.");
 

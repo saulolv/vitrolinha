@@ -1,0 +1,9 @@
+/*
+ * 30 kHz: menos de dois ciclos por período a 20 kHz, a nota mais aguda.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+&fake_pwm {
+	frequency = <30000>;
+};

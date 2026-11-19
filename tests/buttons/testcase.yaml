@@ -1,0 +1,9 @@
+tests:
+  vitrolinha.buttons:
+    tags:
+      - vitrolinha
+      - input
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim

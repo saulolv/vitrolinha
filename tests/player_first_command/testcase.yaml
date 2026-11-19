@@ -1,0 +1,29 @@
+# Um cenário por primeiro comando. Valores de enum cmd_kind:
+# 0 = CMD_PLAY_PAUSE, 1 = CMD_NEXT, 2 = CMD_PREV.
+common:
+  tags:
+    - vitrolinha
+    - player
+  platform_allow:
+    - native_sim
+    - native_sim/native/64
+  integration_platforms:
+    - native_sim/native/64
+
+tests:
+  vitrolinha.player_first_command.empty_library:
+    extra_configs:
+      - CONFIG_TEST_LIBRARY_COUNT=0
+      - CONFIG_TEST_EXPECTED_TRACK=-1
+  vitrolinha.player_first_command.play:
+    extra_configs:
+      - CONFIG_TEST_FIRST_COMMAND=0
+      - CONFIG_TEST_EXPECTED_TRACK=0
+  vitrolinha.player_first_command.next:
+    extra_configs:
+      - CONFIG_TEST_FIRST_COMMAND=1
+      - CONFIG_TEST_EXPECTED_TRACK=0
+  vitrolinha.player_first_command.prev:
+    extra_configs:
+      - CONFIG_TEST_FIRST_COMMAND=2
+      - CONFIG_TEST_EXPECTED_TRACK=2

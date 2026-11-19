@@ -101,6 +101,7 @@ CONFIG_INPUT_GPIO_QDEC=y
 CONFIG_INPUT_GPIO_KEYS=y
 CONFIG_DISPLAY=y
 CONFIG_SSD1306=y
+CONFIG_I2C_DW_CLOCK_SPEED=150                # o padrão 32 põe o I²C a ~2,2 MHz e corrompe a tela
 
 CONFIG_SYS_CLOCK_TICKS_PER_SEC=20000         # 50 us de quantização; ver temporização
 
@@ -123,10 +124,19 @@ CONFIG_FS_FATFS_NUM_DIRS=2
 
 CONFIG_THREAD_ANALYZER=y                     # critério de avaliação: pilha por thread
 CONFIG_THREAD_ANALYZER_AUTO=y
-CONFIG_THREAD_ANALYZER_PRINT_THREAD_PRIORITY=y
 CONFIG_THREAD_ANALYZER_AUTO_THREAD_PRIORITY_OVERRIDE=y
 CONFIG_THREAD_ANALYZER_AUTO_THREAD_PRIORITY=10   # o padrão também é 0
+CONFIG_THREAD_ANALYZER_RUN_UNLOCKED=y        # padrão; travado, a varredura atrasaria o tick da nota
+CONFIG_THREAD_ANALYZER_ISR_STACK_USAGE=y     # padrão; o callback das notas roda na pilha de ISR
+CONFIG_LOG_BUFFER_SIZE=4096                  # o relatório inteiro tem de caber no log diferido
 ```
+
+O analisador fica em `boards/zbook_rp2350b_m33_p2.conf`, não em `prj.conf`:
+ele depende de `!ARCH_POSIX` e não existe no simulador.
+**`CONFIG_THREAD_ANALYZER_PRINT_THREAD_PRIORITY` não existe no Zephyr
+v4.4.2**, e atribuir símbolo inexistente reprova o build — a prioridade sai do
+`kernel thread list` do shell. Método, folgas e roteiro em
+[`docs/medicoes/pilhas-por-thread.md`](docs/medicoes/pilhas-por-thread.md).
 
 **`CONFIG_LV_Z_LVGL_WORKQUEUE_PRIORITY` tem padrão 0**, a maior prioridade
 preemptível. Deixado assim, o laço do LVGL **sobrepuja qualquer thread do
@@ -187,7 +197,8 @@ defconfig da placa liga `FAT_FILESYSTEM_ELM` incondicionalmente. Lista:
   e a melodia fica com volume irregular. O `parser` desloca a faixa inteira em
   oitavas inteiras até a nota mais grave passar do limiar, preservando os
   intervalos. **O limiar sai de medição na E1**, com a varredura de frequência da
-  bring-up do fabricante — não de folclore.
+  bring-up do fabricante — não de folclore. Até lá a transposição está pronta e
+  desligada: `CONFIG_VITROLINHA_TRANSPOSE_MIN_HZ=0`. O CSV nunca é transposto.
 - **O nome exibido vem do cabeçalho RTTTL**, não do nome de arquivo. Sem
   `CONFIG_FS_FATFS_LFN` o `readdir` devolve 8.3 em maiúsculas (`FURELIS.TXT`), o
   que é ruim numa tela cujo único texto é o nome da faixa. Ler o cabeçalho evita
@@ -196,13 +207,12 @@ defconfig da placa liga `FAT_FILESYSTEM_ELM` incondicionalmente. Lista:
 - **Biblioteca de 32 faixas no máximo**, nomes de 24 bytes: 768 B fixos. Arquivos
   além do 32º são ignorados com aviso na tela. Comportamento definido, não
   estouro.
-- **`lv_list`, não `lv_table`.** No LVGL 9 cada item de lista é um botão mais um
-  rótulo, ~150-200 B de heap cada: 32 faixas custam 16-24 KB de pool. O
-  `lv_table` custaria quase nada, mas **não tem foco por linha**, o que jogaria
-  fora a navegação nativa por grupo. Em 520 KB de SRAM, 24 KB por navegação
-  nativa é barato — e o teto de 32 faixas mantém o consumo fixo, que é o que o
-  RNF06 exige. Dimensionar por medição com `lvgl stats memory`, não por
-  estimativa.
+- **Lista virtual, não `lv_list` nem `lv_roller`.** A biblioteca tem só 4
+  rótulos, que mostram a janela da lista em volta do cursor; o destaque anda e a
+  lista rola nas bordas. Um objeto focável por faixa esgotou o pool de 24 KB com
+  32 faixas no simulador de 64 bits, e o roller prende o destaque no meio,
+  deixando linhas vazias nas pontas. Assim a memória da lista não depende da
+  biblioteca (RNF06): 8,2 KB de pool medidos na placa com `lvgl stats memory`.
 
 ## Controles
 
@@ -211,12 +221,12 @@ O encoder navega, os botões controlam o transporte. Regra de uma linha:
 
 | Controle | Ação |
 |---|---|
-| Girar encoder | Move o foco na biblioteca |
-| Clicar encoder | Seleciona = **toca imediatamente**, substituindo a faixa atual |
-| Botão físico 1 | Faixa anterior |
-| Botão físico 2 | Tocar / pausar |
-| Botão físico 3 | Faixa seguinte |
-| Botão físico 4 | **Alterna** biblioteca ↔ reprodução |
+| Girar encoder | Na biblioteca, move o destaque; na reprodução, volta à biblioteca |
+| Clicar encoder | Na biblioteca, **toca imediatamente** e abre a reprodução; na reprodução, volta |
+| `INPUT_BTN_0` | Tocar / pausar |
+| `INPUT_BTN_1` | **Alterna** biblioteca ↔ reprodução (`DISPLAY_TOGGLE_BUTTON`) |
+| `INPUT_BTN_2` | Faixa anterior |
+| `INPUT_BTN_3` | Faixa seguinte |
 
 O botão 4 alterna em vez de só voltar, porque a espec pedia "voltar ao menu" e
 não previa o caminho de volta — com os quatro botões ocupados, não existia
@@ -227,7 +237,10 @@ está tocando leva um marcador `>`, e um arquivo rejeitado pelo parser leva `!`.
 
 **A ordem física dos botões é tarefa da E1.** Os GPIOs são 23, 22, 19, 18 nessa
 ordem de alias, o P2 não tem serigrafia, e a ordem física não segue a numérica.
-O mapeamento acima é por posição física, nunca por número de alias.
+O mapeamento acima é **por código**, provisório: a espec pede anterior, tocar,
+seguinte e alternar da esquerda para a direita, e ajustar é mudar a tabela de
+`src/buttons.c` e o `DISPLAY_TOGGLE_BUTTON`, que um `BUILD_ASSERT` mantém juntos.
+Não há botão de reiniciar: tocar depois do fim, ou clicar de novo a faixa.
 
 No fim da faixa o player **para e permanece na tela de reprodução**, com o
 progresso em 100%; o botão de tocar reinicia do começo. Isso deixa o avanço
@@ -385,11 +398,19 @@ FatFs roda sem reentrância e o `fs_read` não trava nada, então sem o
 empréstimo um cartão puxado no meio da varredura seria desmontado por baixo
 dela. Ver a [ADR 0009](docs/adr/0009-a-varredura-empresta-o-volume.md).
 
-A varredura (`src/storage.c`) lê só a raiz, só `.TXT`/`.RTX`/`.RTT`, **na ordem
-do diretório** — é ela que dá sentido a "o 33.º arquivo é ignorado". Arquivo
-sem cabeçalho legível, vazio ou maior que 4 KB entra na lista como inválido,
-com o nome 8.3. No simulador, que não tem disco, o
-`CONFIG_VITROLINHA_STORAGE` põe a implementação de mentira no lugar.
+A varredura (`src/storage.c`) lê só a raiz, só `.TXT`, `.RTX`, `.RTT` (RTTTL) e
+`.CSV`, **na ordem do diretório** — é ela que dá sentido a "o 33.º arquivo é
+ignorado". O nome exibido do RTTTL sai do cabeçalho (`track_rtttl_name()`); o
+do CSV, que não tem campo de nome, é o 8.3 sem a extensão (`FURELISE.CSV` vira
+`FURELISE`). RTTTL sem `:` na primeira linha, CSV cuja primeira linha não é
+exatamente `frequency_hz,duration_ms`, e arquivo maior que 4 KB entram na lista
+como inválidos. No simulador, que não tem disco, o `CONFIG_VITROLINHA_STORAGE`
+põe outra implementação no lugar: a do aplicativo lê `fixtures/music`
+(`storage_host`), com a mesma regra de nomes; os testes que não escolhem usam
+as faixas RTTTL embutidas (`storage_fake`).
+
+A carga não sabe o formato: `parser_init()` (`src/parser.c`) olha o conteúdo —
+começou pelo cabeçalho do CSV, é CSV; o resto é RTTTL.
 
 A carga (`storage_load`) lê o arquivo **inteiro** e confere o tamanho na
 entrada de diretório **antes** de ler: o arquivo maior que o buffer volta
@@ -403,8 +424,10 @@ só para as duas implementações.
 
 A UI precisa do tempo decorrido sem interrogar o `player` a cada quadro. A
 solução é um **registro instantâneo de escritor único**: `{estado, base_us,
-total_us, faixa}`, escrito só pelo lado do player e lido sem bloqueio pela `ui`,
-que calcula `decorrido = agora - base_us`.
+total_us, faixa, load_error, error_line, error_column}`, escrito só pelo lado
+do player e lido sem bloqueio pela `ui`, que calcula `decorrido = agora -
+base_us`. Os três últimos dizem por que a carga da faixa falhou e onde — é
+deles que sai a tela de "Arquivo inválido"; voltam a zero a cada seleção.
 
 Isso emenda a regra antiga de "sem estado global compartilhado", que era
 incompatível com o próprio requisito da barra de progresso. A regra correta é:
@@ -425,9 +448,26 @@ Sem phandle `input`, o nó assina todos os dispositivos de entrada e guarda só 
 dois códigos declarados, **ignorando os quatro botões** — exatamente a divisão
 desejada: encoder para o grupo de foco, botões para a fila de comandos própria.
 
+**Duas telas, um grupo por tela, um objeto por grupo, em edição.** A biblioteca
+(lista virtual e, no rodapé, o mini-player) e a reprodução. Cada tela tem seu
+grupo, e o indev troca de grupo junto com a tela; em edição, o giro do encoder
+chega ao objeto como seta (`LV_KEY_LEFT`/`RIGHT`) e o clique como
+`LV_EVENT_CLICKED`. O keypad do simulador manda o Enter como tecla já ao
+apertar: voltar de tela nessa tecla entregaria o soltar à outra tela.
+
+**No SSD1306 o branco do LVGL sai apagado e o preto, aceso.** Os objetos da
+biblioteca vão sem os estilos do tema mono: o contorno de foco dele, 2 px por
+fora do objeto, sobrava como uma faixa colada na barra do mini-player. Para
+ver a tela sem a placa, rode `tests/display` com `VITROLINHA_TELA=1` no
+ambiente: o display de teste imprime o quadro em ASCII, `#` aceso, e o teste
+de desenho trava as folgas apagadas.
+
 **O I²C a 100 kHz limita a taxa de quadros.** Um quadro cheio de 128x64 a 1 bpp
 são 1024 bytes, ~92 ms no barramento — os 10 fps do plano não cabem em quadro
-cheio. O overlay sobe para 400 kHz, o que leva para ~23 ms. Ainda assim, desenhar
+cheio. O overlay sobe para 400 kHz, o que leva para ~23 ms — o driver DesignWare
+entrega perto de 580 kHz, e só com `CONFIG_I2C_DW_CLOCK_SPEED=150`: sem ele o
+SCL é calculado contra 32 MHz, sai a ~2,2 MHz, e a tela corrompe pixels ao rolar
+a lista, sem erro nenhum no log. Ainda assim, desenhar
 por região suja é o que importa: mudar o rótulo de tempo e a barra de progresso
 são algumas centenas de bytes, não 1024. O quadro cheio só acontece na troca de
 tela.
@@ -479,9 +519,14 @@ tentativa no `prj.conf`.
 
 - Nenhuma chamada de sistema de arquivos, de I²C ou de LVGL na thread `player`
   nem no callback do timer.
-- No callback do timer, só `pwm_set_cycles`, `k_msgq_get` com `K_NO_WAIT`,
-  `k_timer_start` e escrita no instantâneo. Nada que durma, registre log ou
-  aloque.
+- No callback do timer, só o que roda em interrupção sem esperar: o ajuste de
+  tom (`pwm_set_cycles` na placa, o registro em RAM no simulador), `k_msgq_get`
+  com `K_NO_WAIT`, `k_timer_start`/`k_timer_stop`, o spinlock que serializa o
+  callback com a thread `player`, o `k_sem_give` com que `loader_next_event`
+  pede reposição da fila, e `snapshot_publish`, que é escrita sob seqlock.
+  Nenhuma delas dorme: o spinlock só mascara interrupções por algumas
+  instruções, o `k_sem_give` nunca bloqueia quem dá, e o seqlock não faz o
+  escritor esperar o leitor. Nada que durma, registre log ou aloque.
 - O redesenho da UI é limitado por taxa fixa e nunca dispara por nota.
 - Buffers de tamanho fixo: o uso de RAM não depende do tamanho do arquivo.
 - Escrever o parser RTTTL, não importar biblioteca pronta — é entregável do
@@ -552,7 +597,8 @@ Instrumentar chaveando um dos LEDs 0-3 (GPIO 24-27) e medindo no terminal do LED
 já que não há pino de header confirmado. Manter na biblioteca um arquivo de
 calibração no formato CSV com N notas idênticas de duração conhecida. Usar
 `CONFIG_THREAD_ANALYZER` para o consumo de pilha por thread, que é critério de
-avaliação — e `k_cycle_get_64()`, não a versão de 32 bits, que dá a volta a cada
+avaliação — a tabela sai do console da placa com `scripts/stack_report.py`,
+pela regra de folga de `docs/medicoes/pilhas-por-thread.md` — e `k_cycle_get_64()`, não a versão de 32 bits, que dá a volta a cada
 28,6 s a 150 MHz e arruinaria uma medição de 60 s.
 
 ## Escopo em etapas

@@ -1,0 +1,31 @@
+/*
+ * O buzzer de teste: um canal do PWM de mentira do Zephyr, a 150 MHz como o
+ * relógio do periférico na ZBook, sob o mesmo alias que o tone_pwm procura.
+ *
+ * Nasce sem inicializar (`zephyr,deferred-init`), para o teste ver o
+ * tone_init recusar um PWM que não está pronto antes de chamar device_init().
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	fake_pwm: fake-pwm {
+		compatible = "zephyr,fake-pwm";
+		#pwm-cells = <2>;
+		frequency = <150000000>;
+		zephyr,deferred-init;
+		status = "okay";
+	};
+
+	pwmleds {
+		compatible = "pwm-leds";
+
+		buzzer: buzzer {
+			pwms = <&fake_pwm 16 0>;
+		};
+	};
+
+	aliases {
+		pwm-buzzer = &buzzer;
+	};
+};

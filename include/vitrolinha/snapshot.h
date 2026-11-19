@@ -74,13 +74,44 @@ struct player_snapshot {
 
 	/** @brief Índice na biblioteca, ou ::TRACK_NONE se nenhuma. */
 	int16_t track;
+
+	/**
+	 * @brief Por que a última carga de @ref track falhou: 0, ou erro negativo.
+	 *
+	 * É o código de `storage_load` (sem cartão, arquivo sumido, grande
+	 * demais, falha de leitura) ou da validação do arquivo (formato ou valor
+	 * fora de faixa). Vale junto com ::PLAYER_STOPPED; volta a 0 a cada
+	 * seleção ou reinício. É o que a tela de erro mostra por ~2 s antes de
+	 * voltar à biblioteca e marcar o item com `!`.
+	 *
+	 * Falhas no meio da reprodução — saída recusando o tom, fila vazia antes
+	 * do fim — não entram aqui: não são defeito do arquivo.
+	 */
+	int16_t load_error;
+
+	/**
+	 * @brief Linha do arquivo que a validação recusou, a partir de 1.
+	 *
+	 * 0 quando a falha não tem linha, como as de armazenamento. Cabe em 16
+	 * bits porque o arquivo cabe em `STORAGE_FILE_MAX` bytes.
+	 */
+	uint16_t error_line;
+
+	/**
+	 * @brief Coluna, a partir de 1, do byte que a validação recusou.
+	 *
+	 * 0 junto com @ref error_line. É o que localiza o erro num RTTTL, que
+	 * costuma ser uma linha só.
+	 */
+	uint16_t error_column;
 };
 
 /** @brief Valor de repouso: parado, no início, sem faixa. */
 #define SNAPSHOT_IDLE_INITIALIZER                                              \
 	{                                                                      \
 		.state = PLAYER_STOPPED, .base_us = 0, .total_us = 0,          \
-		.track = TRACK_NONE,                                           \
+		.track = TRACK_NONE, .load_error = 0, .error_line = 0,         \
+		.error_column = 0,                                             \
 	}
 
 /**

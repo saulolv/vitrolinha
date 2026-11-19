@@ -67,7 +67,9 @@ que é o teclado do host em vez de um pino.
 
 | Tecla | Efeito |
 |---|---|
-| `1` `2` `3` `4` | botões de transporte |
+| `1` | tocar / pausar |
+| `2` | alternar entre biblioteca e reprodução |
+| `3` `4` | faixa anterior / seguinte |
 | `Enter` | clique do encoder |
 | setas ← → | girar o encoder |
 
@@ -158,11 +160,13 @@ resultado delas é um relatório para ler, não uma asserção que passa ou falh
 ```bash
 scripts/bench.sh              # RNF03 no simulador
 scripts/bench.sh --board      # o mesmo binário, para rodar na placa
+python3 scripts/stack_report.py --check console.log   # pilha por thread, do console da placa
 ```
 
 | Bancada | Pergunta | Resultado |
 |---|---|---|
 | [`bench/rnf03/`](bench/rnf03/) | Quanto custa abrir e ler uma faixa do cartão? | [medição](docs/medicoes/rnf03-abertura-de-faixa.md) · [ADR 0006](docs/adr/0006-sem-pre-carga-de-faixas-vizinhas.md) |
+| o próprio firmware, com `CONFIG_THREAD_ANALYZER` | Quanto de pilha cada thread usa, e a folga se justifica? | [roteiro e regra de folga](docs/medicoes/pilhas-por-thread.md) — medição na placa pendente |
 
 A do RNF03 vale como exemplo do que o simulador pode e não pode responder. Ela
 **mede** quantos setores o FatFs pede — software puro acima do `disk_access`,
