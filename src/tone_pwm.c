@@ -28,16 +28,12 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/pwm.h>
 
-/**
- * @brief Faixa de frequências aceitas, em hertz.
- *
- * Abaixo de 20 Hz não é nota; acima de 20 kHz ninguém ouve, e o piezo já
- * não responde muito antes. O limite de baixo do driver fica mais abaixo
- * ainda (~9 Hz, com divisor 256 e contador de 16 bits), então a faixa daqui
- * é a que vale.
+/*
+ * A faixa de frequências é a do contrato, ::TONE_FREQ_MIN_HZ a
+ * ::TONE_FREQ_MAX_HZ. O limite de baixo do driver fica mais abaixo ainda
+ * (~9 Hz, com divisor 256 e contador de 16 bits), então a do contrato é a
+ * que vale.
  */
-#define TONE_FREQ_MIN_HZ 20U
-#define TONE_FREQ_MAX_HZ 20000U
 
 /**
  * @brief Relógio mínimo do canal: dois ciclos por período na nota mais aguda.
@@ -85,11 +81,11 @@ int tone_set_frequency(uint32_t frequency_hz)
 	uint32_t pulse = 0U;
 	int err;
 
-	if (frequency_hz != 0U) {
-		if ((frequency_hz < TONE_FREQ_MIN_HZ) || (frequency_hz > TONE_FREQ_MAX_HZ)) {
-			return -ERANGE;
-		}
+	if (!tone_frequency_supported(frequency_hz)) {
+		return -ERANGE;
+	}
 
+	if (frequency_hz != 0U) {
 		/* Arredondado ao ciclo mais próximo, não truncado. O relógio
 		 * conferido no tone_init garante período de 2 a UINT32_MAX / 20.
 		 */

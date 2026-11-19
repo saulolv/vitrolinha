@@ -63,7 +63,9 @@ struct parser_csv {
  * @param length Quantidade exata de bytes disponíveis em buffer.
  * @param error Local do erro; pode ser NULL. Zerado em caso de sucesso.
  * @return 0 no sucesso; -EINVAL para argumento/formato inválido; -ERANGE
- *         para valores ou soma das durações que excedam os tipos do contrato.
+ *         para valores ou soma das durações que excedam os tipos do contrato,
+ *         e para frequência diferente de zero fora de ::TONE_FREQ_MIN_HZ ..
+ *         ::TONE_FREQ_MAX_HZ, apontada na coluna 1 da linha.
  * @note Exigir ao menos uma linha musical e verificar a soma em 64 bits
  *       antes de converter para total_us. Não chamar no callback do timer.
  */

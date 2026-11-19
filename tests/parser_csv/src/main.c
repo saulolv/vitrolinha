@@ -7,6 +7,7 @@
  */
 
 #include <vitrolinha/parser_csv.h>
+#include <vitrolinha/tone.h>
 
 #include <errno.h>
 #include <string.h>
@@ -91,8 +92,7 @@ ZTEST(parser_csv, test_faixa_longa_valida_inteira)
 	 * andam para a frente até o silêncio final.
 	 */
 	while ((status = parser_csv_next(&parser, &event)) == 1) {
-		zassert_true((event.freq_hz == 0U) ||
-			     ((event.freq_hz >= 20U) && (event.freq_hz <= 20000U)),
+		zassert_true(tone_frequency_supported(event.freq_hz),
 			     "evento %zu com %u Hz", events, event.freq_hz);
 		zassert_true(event.offset_us >= previous, "evento %zu voltou no tempo", events);
 		previous = event.offset_us;
@@ -157,15 +157,15 @@ ZTEST(parser_csv, test_quebras_de_linha_e_fim_sem_newline)
 ZTEST(parser_csv, test_tamanho_exato_sem_nul)
 {
 	/* Não há espaço para NUL: a última leitura deve parar no byte final. */
-	static const uint8_t csv[sizeof(HEADER "\n1,2") - 1U] = HEADER "\n1,2";
-	static const uint8_t suffix[] = HEADER "\n1,2IGNORAR";
+	static const uint8_t csv[sizeof(HEADER "\n20,2") - 1U] = HEADER "\n20,2";
+	static const uint8_t suffix[] = HEADER "\n20,2IGNORAR";
 	struct parser_csv parser;
 
 	zassert_ok(parser_csv_init(&parser, csv, sizeof(csv), NULL));
-	expect_event(&parser, 0U, 1U);
+	expect_event(&parser, 0U, 20U);
 	expect_event(&parser, 2000U, 0U);
 	zassert_ok(parser_csv_init(&parser, suffix, sizeof(csv), NULL));
-	expect_event(&parser, 0U, 1U);
+	expect_event(&parser, 0U, 20U);
 	expect_event(&parser, 2000U, 0U);
 }
 
@@ -276,7 +276,7 @@ ZTEST(parser_csv, test_linhas_invalidas_e_localizacao)
 
 ZTEST(parser_csv, test_limites_e_overflow)
 {
-	static const uint8_t maximum[] = HEADER "\n4294967295,4294966\n0000,0001";
+	static const uint8_t maximum[] = HEADER "\n20000,4294966\n0000,0001";
 	const struct {
 		const char *csv;
 		size_t line;
@@ -285,15 +285,15 @@ ZTEST(parser_csv, test_limites_e_overflow)
 		{HEADER "\n4294967296,1", 2U, 10U},
 		{HEADER "\n999999999999999999999999999,1", 2U, 10U},
 		{HEADER "\n1,4294967296", 2U, 12U},
-		{HEADER "\n1,4294967295", 2U, 3U},
-		{HEADER "\n1,4294968", 2U, 3U},
-		{HEADER "\n1,4294967\n1,1", 3U, 3U},
+		{HEADER "\n440,4294967295", 2U, 5U},
+		{HEADER "\n440,4294968", 2U, 5U},
+		{HEADER "\n440,4294967\n440,1", 3U, 5U},
 	};
 	struct parser_csv parser;
 
 	zassert_ok(parser_csv_init(&parser, maximum, sizeof(maximum) - 1U, NULL));
 	zassert_equal(4294967000U, parser.total_us);
-	expect_event(&parser, 0U, UINT32_MAX);
+	expect_event(&parser, 0U, 20000U);
 	expect_event(&parser, 4294966000U, 0U);
 	expect_event(&parser, 4294967000U, 0U);
 	for (size_t i = 0; i < ARRAY_SIZE(cases); i++) {
@@ -304,6 +304,46 @@ ZTEST(parser_csv, test_limites_e_overflow)
 		zassert_equal(cases[i].line, error.line, "caso %zu", i);
 		zassert_equal(cases[i].column, error.column, "caso %zu", i);
 	}
+}
+
+ZTEST(parser_csv, test_frequencia_fora_da_faixa_da_saida)
+{
+	/* As bordas da saída e o silêncio passam: são o que o tone aceita. */
+	static const uint8_t edges[] = HEADER "\n20,100\n0,100\n20000,100";
+	/* Recusada na carga, com a linha: sem isto a faixa passava na validação
+	 * e parava no meio, quando a nota chegasse ao buzzer.
+	 */
+	const struct {
+		const char *csv;
+		size_t line;
+	} cases[] = {
+		{HEADER "\n19,100", 2U},
+		{HEADER "\n20001,100", 2U},
+		{HEADER "\n1,100", 2U},
+		{HEADER "\n440,100\n4294967295,100", 3U},
+	};
+	struct parser_csv parser;
+	struct parser_csv_error error;
+
+	zassert_ok(parser_csv_init(&parser, edges, sizeof(edges) - 1U, NULL));
+	expect_event(&parser, 0U, TONE_FREQ_MIN_HZ);
+	expect_event(&parser, 100000U, 0U);
+	expect_event(&parser, 200000U, TONE_FREQ_MAX_HZ);
+
+	for (size_t i = 0; i < ARRAY_SIZE(cases); i++) {
+		zassert_equal(-ERANGE, parser_csv_init(&parser, (const uint8_t *)cases[i].csv,
+						     strlen(cases[i].csv), &error), "caso %zu", i);
+		zassert_equal(cases[i].line, error.line, "caso %zu", i);
+		zassert_equal(1U, error.column, "caso %zu", i);
+		zassert_is_null(parser.buffer, "caso %zu", i);
+	}
+
+	/* O formato vem antes da faixa: a linha malformada continua -EINVAL,
+	 * apontada onde o formato quebrou.
+	 */
+	zassert_equal(-EINVAL, parser_csv_init(&parser, (const uint8_t *)HEADER "\n19,0",
+					     strlen(HEADER "\n19,0"), &error));
+	zassert_equal(4U, error.column);
 }
 
 ZTEST(parser_csv, test_validacao_integral_e_reinicializacao)
