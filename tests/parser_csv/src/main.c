@@ -24,6 +24,13 @@ static const uint8_t pausas[] = {
 static const uint8_t repetidas[] = {
 #include "notas_repetidas.inc"
 };
+/* A faixa longa de bancada: 84,6 s, perto de dez filas de 32 eventos. */
+static const uint8_t mario[] = {
+#include "mario.inc"
+};
+
+/* Cabe no buffer de faixa, senão a carga a recusaria antes do parser. */
+BUILD_ASSERT(sizeof(mario) <= 4096U, "mario.csv passou do buffer de faixa");
 
 ZTEST_SUITE(parser_csv, NULL, NULL, NULL, NULL, NULL);
 
@@ -64,6 +71,37 @@ ZTEST(parser_csv, test_escala_fixture)
 		zassert_equal(123U, sentinel.offset_us);
 		zassert_equal(456U, sentinel.freq_hz);
 	}
+}
+
+ZTEST(parser_csv, test_faixa_longa_valida_inteira)
+{
+	struct parser_csv parser;
+	struct playback_event event;
+	struct parser_csv_error error = {.line = 99U, .column = 99U};
+	uint32_t previous = 0U;
+	size_t events = 0U;
+	int status;
+
+	zassert_ok(parser_csv_init(&parser, mario, sizeof(mario), &error),
+		   "linha %zu, coluna %zu", error.line, error.column);
+	zassert_equal(309U, parser.row_count);
+	zassert_equal(84582000U, parser.total_us);
+
+	/* Toda frequência dentro do que o buzzer aceita, e os instantes só
+	 * andam para a frente até o silêncio final.
+	 */
+	while ((status = parser_csv_next(&parser, &event)) == 1) {
+		zassert_true((event.freq_hz == 0U) ||
+			     ((event.freq_hz >= 20U) && (event.freq_hz <= 20000U)),
+			     "evento %zu com %u Hz", events, event.freq_hz);
+		zassert_true(event.offset_us >= previous, "evento %zu voltou no tempo", events);
+		previous = event.offset_us;
+		events++;
+	}
+
+	zassert_equal(0, status);
+	zassert_equal(309U + 1U, events, "uma por linha, mais o silencio final");
+	zassert_equal(84582000U, previous);
 }
 
 ZTEST(parser_csv, test_pausas_fixture_e_silencio_final)

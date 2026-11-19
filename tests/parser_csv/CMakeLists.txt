@@ -8,7 +8,7 @@ target_sources(app PRIVATE src/main.c)
 
 # Exercita os arquivos de exemplo reais, incorporados como bytes sem NUL.
 target_include_directories(app PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-foreach(fixture escala pausas notas_repetidas)
+foreach(fixture escala pausas notas_repetidas mario)
   generate_inc_file_for_target(app
     ${CMAKE_CURRENT_LIST_DIR}/../../fixtures/music/${fixture}.csv
     ${CMAKE_CURRENT_BINARY_DIR}/${fixture}.inc)
