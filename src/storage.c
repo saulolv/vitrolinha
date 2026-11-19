@@ -4,11 +4,13 @@
  *
  * Três decisões moldam este arquivo.
  *
- * **O nome da faixa vem do cabeçalho RTTTL**, não do sistema de arquivos. Sem
- * `CONFIG_FS_FATFS_LFN` a leitura de diretório devolve `FURELIS.TXT`, ruim
- * numa tela cujo único texto é o nome. Ler o cabeçalho custa uma abertura por
- * arquivo, feita uma vez por varredura; ligar nomes longos custaria RAM
- * estática para sempre.
+ * **As faixas são os CSVs da raiz**, no formato do @ref parser_csv.h, e o
+ * nome exibido é o do arquivo sem a extensão. O CSV não tem campo de nome, e
+ * sem `CONFIG_FS_FATFS_LFN` o nome chega em 8.3 e em maiúsculas
+ * (`FURELISE.CSV` vira `FURELISE`) — o preço de não pagar a RAM estática dos
+ * nomes longos. A varredura ainda abre cada arquivo para conferir a primeira
+ * linha: o arquivo sem o cabeçalho que o parser exige entra marcado como
+ * inválido, em vez de só falhar quando for selecionado.
  *
  * **A faixa é carregada inteira, de uma vez**, antes de tocar. O tamanho é
  * conferido na entrada de diretório antes de ler um byte, para que o arquivo
@@ -39,14 +41,24 @@
 LOG_MODULE_REGISTER(storage, LOG_LEVEL_INF);
 
 /**
- * @brief Quanto de cada arquivo é lido para achar o nome.
+ * @brief Primeira linha de toda faixa, sem o fim de linha.
  *
- * O cabeçalho RTTTL começa pelo nome, terminado em `:`. O nome útil tem 16
- * caracteres na tela e o campo, 23 bytes; 64 B cobrem isso com folga para BOM,
- * espaços e um nome longo que vai ser truncado. Cabe num setor, então custa a
- * mesma leitura que um byte custaria.
+ * A mesma que o `parser_csv` exige, byte a byte: sem BOM, sem espaços, sem
+ * maiúsculas. Conferir aqui com regra mais frouxa listaria como válida uma
+ * faixa que a carga recusaria.
  */
-#define STORAGE_HEADER_PEEK 64U
+#define STORAGE_CSV_HEADER "frequency_hz,duration_ms"
+
+/** @brief Extensão das faixas, como o FatFs a entrega sem nomes longos. */
+#define STORAGE_CSV_EXTENSION ".CSV"
+
+/**
+ * @brief Quanto de cada arquivo é lido para conferir o cabeçalho.
+ *
+ * O cabeçalho e o CRLF que um editor do Windows deixa depois dele. Cabe num
+ * setor, então custa a mesma leitura que um byte custaria.
+ */
+#define STORAGE_HEADER_PEEK (sizeof(STORAGE_CSV_HEADER) + 1U)
 
 /**
  * @brief Tamanho de um nome 8.3 com terminador, como o `fs_readdir` o entrega.
@@ -72,7 +84,7 @@ static char lib_files[LIBRARY_MAX][STORAGE_NAME_SIZE];
 static size_t lib_count;
 
 /**
- * @brief Início de cada arquivo, onde se procura o nome.
+ * @brief Início de cada arquivo, onde se confere o cabeçalho.
  *
  * Estático, e não na pilha, para que o custo de pilha de quem varre não
  * dependa deste número. Só é tocado com o volume emprestado.
@@ -94,23 +106,18 @@ static void track_path(char path[STORAGE_PATH_SIZE], const char *name)
 /**
  * @brief Diz se a entrada de diretório é uma faixa.
  *
- * Só arquivos de extensão RTTTL. Sem nomes longos o FatFs entrega o nome 8.3
- * tal como está gravado no diretório, sempre em maiúsculas — daí a
- * comparação exata.
+ * Só arquivos `.CSV`. Sem nomes longos o FatFs entrega o nome 8.3 tal como
+ * está gravado no diretório, sempre em maiúsculas — daí a comparação exata.
  *
  * O `_` inicial descarta as sobras que o macOS deixa em todo cartão: o
- * `._FURELIS.TXT` de metadados vira `_FURELI~1.TXT` em 8.3, com extensão de
+ * `._FURELISE.CSV` de metadados vira `_FURELI~1.CSV` em 8.3, com extensão de
  * faixa e conteúdo binário.
- *
- * O formato CSV de bancada não entra aqui: ele não tem cabeçalho de onde
- * tirar o nome, e a regra dele é da issue #22.
  *
  * @param entry Entrada devolvida por `fs_readdir`.
  * @return Verdadeiro se a entrada deve entrar na biblioteca.
  */
 static bool is_track_file(const struct fs_dirent *entry)
 {
-	static const char *const extensions[] = {"TXT", "RTX", "RTT"};
 	const char *dot;
 
 	if ((entry->type != FS_DIR_ENTRY_FILE) || (entry->name[0] == '_')) {
@@ -118,90 +125,44 @@ static bool is_track_file(const struct fs_dirent *entry)
 	}
 
 	dot = strrchr(entry->name, '.');
-	if (dot == NULL) {
-		return false;
-	}
 
-	for (size_t i = 0U; i < ARRAY_SIZE(extensions); i++) {
-		if (strcmp(dot + 1, extensions[i]) == 0) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
-/** @brief Espaço ou tabulação: o que se apara em volta do nome. */
-static bool is_blank(char c)
-{
-	return (c == ' ') || (c == '\t');
-}
-
-/** @brief Fim de linha. Não pode aparecer dentro do nome. */
-static bool is_eol(char c)
-{
-	return (c == '\r') || (c == '\n');
+	return (dot != NULL) && (strcmp(dot, STORAGE_CSV_EXTENSION) == 0);
 }
 
 /**
- * @brief Acha o nome no começo de um cabeçalho RTTTL.
+ * @brief Diz se o arquivo começa pelo cabeçalho do CSV.
  *
- * O nome é tudo antes do primeiro `:`. Em volta dele vale o que um editor de
- * texto costuma deixar: BOM de UTF-8 e linhas em branco antes, espaços dos
- * dois lados. Uma quebra de linha **antes** do `:` diz que aquilo não é
- * cabeçalho — o nome não ocupa duas linhas.
+ * O cabeçalho seguido de LF ou de CRLF, as duas quebras que o parser aceita.
+ * Só o cabeçalho, sem quebra, também não vale: o parser exige ao menos uma
+ * linha musical depois dele.
  *
- * @param buf      Início do arquivo.
- * @param len      Quantos bytes de @p buf foram lidos.
- * @param name     Recebe o começo do nome, dentro de @p buf.
- * @param name_len Recebe o comprimento do nome, possivelmente zero.
- * @return Verdadeiro se há cabeçalho; falso deixa as saídas intocadas.
+ * @param buf Início do arquivo.
+ * @param len Quantos bytes de @p buf foram lidos.
+ * @return Verdadeiro se a primeira linha é o cabeçalho.
  */
-static bool header_name(const char *buf, size_t len, const char **name, size_t *name_len)
+static bool has_csv_header(const uint8_t *buf, size_t len)
 {
-	static const char bom[] = "\xEF\xBB\xBF";
-	size_t start = 0U;
-	size_t end;
-	size_t found;
+	const size_t header_len = sizeof(STORAGE_CSV_HEADER) - 1U;
 
-	if ((len >= (sizeof(bom) - 1U)) && (memcmp(buf, bom, sizeof(bom) - 1U) == 0)) {
-		start = sizeof(bom) - 1U;
-	}
-
-	while ((start < len) && (is_blank(buf[start]) || is_eol(buf[start]))) {
-		start++;
-	}
-
-	for (end = start; (end < len) && (buf[end] != ':'); end++) {
-		if (is_eol(buf[end])) {
-			return false;
-		}
-	}
-
-	if (end == len) {
+	if ((len <= header_len) || (memcmp(buf, STORAGE_CSV_HEADER, header_len) != 0)) {
 		return false;
 	}
 
-	found = end - start;
-
-	while ((found > 0U) && is_blank(buf[start + found - 1U])) {
-		found--;
+	if (buf[header_len] == '\n') {
+		return true;
 	}
 
-	*name = &buf[start];
-	*name_len = found;
-
-	return true;
+	return (buf[header_len] == '\r') && (len > (header_len + 1U)) &&
+	       (buf[header_len + 1U] == '\n');
 }
 
 /**
- * @brief Lê o cabeçalho de uma faixa e preenche os metadados dela.
+ * @brief Lê o começo de uma faixa e preenche os metadados dela.
  *
  * Problema de **conteúdo** não é erro: a faixa entra na biblioteca marcada
- * como inválida, com o nome 8.3 quando não há nome legível, para aparecer na
- * lista com `!` em vez de sumir sem explicação. Já falha de **leitura** é
- * erro, porque diz que o cartão parou de responder — e aí a biblioteca
- * inteira está em dúvida, não esta faixa.
+ * como inválida, para aparecer na lista em vez de sumir sem explicação. Já
+ * falha de **leitura** é erro, porque diz que o cartão parou de responder — e
+ * aí a biblioteca inteira está em dúvida, não esta faixa.
  *
  * @param entry Entrada do diretório.
  * @param index Posição na biblioteca.
@@ -214,10 +175,7 @@ static int describe_track(const struct fs_dirent *entry, uint8_t index,
 {
 	char path[STORAGE_PATH_SIZE];
 	struct fs_file_t file;
-	const char *name = entry->name;
-	size_t name_len = strlen(entry->name);
-	const char *header;
-	size_t header_len;
+	size_t name_len = strlen(entry->name) - (sizeof(STORAGE_CSV_EXTENSION) - 1U);
 	ssize_t got;
 	bool valid;
 
@@ -240,21 +198,14 @@ static int describe_track(const struct fs_dirent *entry, uint8_t index,
 		return -EIO;
 	}
 
-	/* Arquivo vazio não tem cabeçalho, então já sai daqui inválido. O
-	 * maior que o buffer é recusado agora, e não só na carga: o tamanho
-	 * vem de graça na entrada de diretório, e a marca `!` na lista poupa
-	 * a quem seleciona a faixa uma tela de erro.
+	/* O vazio e o sem cabeçalho já saem daqui inválidos. O maior que o
+	 * buffer é recusado agora, e não só na carga: o tamanho vem de graça
+	 * na entrada de diretório, e a marca na lista poupa a quem seleciona a
+	 * faixa uma tela de erro.
 	 */
-	valid = header_name((const char *)peek, (size_t)got, &header, &header_len);
+	valid = has_csv_header(peek, (size_t)got) && (entry->size <= STORAGE_FILE_MAX);
 
-	if (valid && (header_len > 0U)) {
-		name = header;
-		name_len = header_len;
-	}
-
-	valid = valid && (entry->size <= STORAGE_FILE_MAX);
-
-	track_meta_init(meta, index, name, name_len, valid);
+	track_meta_init(meta, index, entry->name, name_len, valid);
 
 	return 0;
 }

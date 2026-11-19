@@ -8,8 +8,8 @@
  * FatFs de verdade através do módulo `card`. O que troca é o disco embaixo —
  * o mesmo de tests/card/, que o teste põe, tira e faz falhar.
  *
- * Os nomes de arquivo são 8.3 porque o firmware roda sem nomes longos: é
- * exatamente por isso que o nome da faixa vem do cabeçalho.
+ * Os nomes de arquivo são 8.3 porque o firmware roda sem nomes longos, e é
+ * esse nome, sem a extensão, que a lista mostra: o CSV não tem campo de nome.
  *
  * O critério da issue #11 é "o arquivo carrega, o oversize é rejeitado com
  * mensagem, e a reprodução não emite nenhuma chamada de sistema de arquivos".
@@ -39,19 +39,25 @@
 /** @brief Teto de pontos de remoção tentados na varredura interrompida. */
 #define EJECT_SWEEP_MAX 1000U
 
-/** @brief Um cabeçalho RTTTL mínimo e válido, depois do nome. */
-#define BODY ":d=4,o=5,b=125:c,d,e"
+/** @brief O cabeçalho que o parser exige, com a quebra de linha. */
+#define HEADER "frequency_hz,duration_ms\n"
+
+/** @brief Uma faixa mínima e válida. */
+#define CSV HEADER "440,250\n"
 
 /**
- * @brief Uma melodia de verdade, do tamanho típico do que vai no cartão.
+ * @brief Uma melodia de verdade, com o CRLF que um editor do Windows deixa.
  *
- * Com o fim de linha que um editor de texto deixa: a carga entrega o arquivo
- * como está, e quem decide o que é RTTTL é o interpretador.
+ * A carga entrega o arquivo como está; quem decide se é CSV válido é o
+ * interpretador.
  */
 #define FUR_ELISE                                                                          \
-	"Fur Elise:d=8,o=5,b=125:"                                                         \
-	"e6,d#6,e6,d#6,e6,b,d6,c6,a,p,c,e,a,b,p,e,g#,b,c6,"                                \
-	"p,e,e6,d#6,e6,d#6,e6,b,d6,c6,a,p,c,e,a,b,p,e,c6,b,a\r\n"
+	"frequency_hz,duration_ms\r\n"                                                     \
+	"659,180\r\n622,180\r\n659,180\r\n622,180\r\n659,180\r\n"                         \
+	"494,180\r\n587,180\r\n523,180\r\n440,540\r\n0,180\r\n"
+
+/** @brief Linhas musicais de ::FUR_ELISE, sem contar o cabeçalho. */
+#define FUR_ELISE_NOTES 10U
 
 /** @brief Byte que marca o buffer, para ver se a carga recusada o tocou. */
 #define UNTOUCHED 0xAAU
@@ -142,16 +148,14 @@ static void reinsert(void)
 	zassert_equal(CARD_READY, card_refresh(), "o cartao nao montou");
 }
 
-/** @brief Escreve @p count faixas de nomes `T00.TXT`... e `Faixa 00`... */
+/** @brief Escreve @p count faixas válidas de nomes `T00.CSV`, `T01.CSV`... */
 static void put_numbered_tracks(size_t count)
 {
 	char name[16];
-	char text[48];
 
 	for (size_t i = 0U; i < count; i++) {
-		(void)snprintf(name, sizeof(name), "T%02u.TXT", (unsigned int)i);
-		(void)snprintf(text, sizeof(text), "Faixa %02u" BODY, (unsigned int)i);
-		put_text(name, text);
+		(void)snprintf(name, sizeof(name), "T%02u.CSV", (unsigned int)i);
+		put_text(name, CSV);
 	}
 }
 
@@ -175,7 +179,7 @@ static void storage_card_before(void *fixture)
 ZTEST_SUITE(storage_card, NULL, storage_card_setup, storage_card_before, NULL, NULL);
 
 /* -------------------------------------------------------------------------
- * O nome vem do cabeçalho
+ * O nome vem do arquivo
  * ------------------------------------------------------------------------- */
 
 ZTEST(storage_card, test_cartao_vazio_da_biblioteca_vazia)
@@ -187,17 +191,17 @@ ZTEST(storage_card, test_cartao_vazio_da_biblioteca_vazia)
 	zassert_equal(0U, skipped);
 }
 
-ZTEST(storage_card, test_nome_vem_do_cabecalho_e_nao_do_arquivo)
+ZTEST(storage_card, test_nome_e_o_do_arquivo_sem_extensao)
 {
 	struct track_meta library[LIBRARY_MAX];
 
-	/* O caso que motiva a issue: sem nomes longos, o diretório diz
-	 * FURELIS.TXT, e a tela tem de dizer Fur Elise.
+	/* Sem nomes longos o diretório diz FURELISE.CSV, e o CSV não tem
+	 * campo de nome: a tela mostra FURELISE.
 	 */
-	put_text("FURELIS.TXT", "Fur Elise:d=8,o=5,b=125:e6,d#6,e6");
+	put_text("FURELISE.CSV", FUR_ELISE);
 
 	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_str_equal("Fur Elise", library[0].name);
+	zassert_str_equal("FURELISE", library[0].name);
 	zassert_equal(0U, library[0].index);
 	zassert_true(library[0].valid);
 }
@@ -209,31 +213,18 @@ ZTEST(storage_card, test_faixas_saem_na_ordem_do_diretorio)
 	/* Ordem de cópia, não alfabética: é ela que dá sentido a "o 33.º
 	 * arquivo", e é a que quem copiou os arquivos espera ver.
 	 */
-	put_text("C.TXT", "Charlie" BODY);
-	put_text("A.TXT", "Alfa" BODY);
-	put_text("B.TXT", "Bravo" BODY);
+	put_text("C.CSV", CSV);
+	put_text("A.CSV", CSV);
+	put_text("B.CSV", CSV);
 
 	zassert_equal(3, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_str_equal("Charlie", library[0].name);
-	zassert_str_equal("Alfa", library[1].name);
-	zassert_str_equal("Bravo", library[2].name);
+	zassert_str_equal("C", library[0].name);
+	zassert_str_equal("A", library[1].name);
+	zassert_str_equal("B", library[2].name);
 
 	for (int i = 0; i < 3; i++) {
 		zassert_equal((uint8_t)i, library[i].index, "o indice tem de casar com a posicao");
 	}
-}
-
-ZTEST(storage_card, test_extensoes_de_rtttl)
-{
-	struct track_meta library[LIBRARY_MAX];
-
-	put_text("UM.TXT", "Um" BODY);
-	put_text("DOIS.RTX", "Dois" BODY);
-	put_text("TRES.RTT", "Tres" BODY);
-
-	zassert_equal(3, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_str_equal("Dois", library[1].name);
-	zassert_str_equal("Tres", library[2].name);
 }
 
 ZTEST(storage_card, test_o_que_nao_e_faixa_fica_de_fora)
@@ -241,20 +232,34 @@ ZTEST(storage_card, test_o_que_nao_e_faixa_fica_de_fora)
 	struct track_meta library[LIBRARY_MAX];
 	size_t skipped = 99U;
 
-	put_text("DADOS.CSV", "440,500\n");
-	put_text("IMAGEM.BIN", "Nao e faixa" BODY);
-	put_text("LEIAME", "Sem extensao" BODY);
+	/* Um RTTTL de antes da troca de formato: o loader não o tocaria. */
+	put_text("FURELIS.TXT", "Fur Elise:d=8,o=5,b=125:e6,d#6,e6");
+	put_text("IMAGEM.BIN", CSV);
+	put_text("LEIAME", CSV);
 	/* A sobra de metadados que o macOS deixa em todo cartão. */
-	put_file("_FURE~1.TXT", "\x00\x05\x16\x07", 4U);
-	zassert_ok(fs_mkdir(CARD_MOUNT_POINT "/PASTA.TXT"), "nao criou o diretorio");
-	put_text("FAIXA.TXT", "A unica" BODY);
+	put_file("_FURE~1.CSV", "\x00\x05\x16\x07", 4U);
+	zassert_ok(fs_mkdir(CARD_MOUNT_POINT "/PASTA.CSV"), "nao criou o diretorio");
+	put_text("FAIXA.CSV", CSV);
 
 	/* Capacidade de uma faixa só: se algum dos de cima contasse como
 	 * faixa, apareceria no excedente.
 	 */
 	zassert_equal(1, storage_scan(library, 1U, &skipped));
-	zassert_str_equal("A unica", library[0].name);
+	zassert_str_equal("FAIXA", library[0].name);
 	zassert_equal(0U, skipped, "o que nao e faixa entrou na conta do excedente");
+}
+
+ZTEST(storage_card, test_nome_8_3_cheio_cabe_na_tela)
+{
+	struct track_meta library[LIBRARY_MAX];
+
+	/* Oito caracteres, o maior nome que o 8.3 entrega: cabe nas 16
+	 * colunas da tela sem truncar.
+	 */
+	put_text("ABCDEFGH.CSV", CSV);
+
+	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
+	zassert_str_equal("ABCDEFGH", library[0].name);
 }
 
 /* -------------------------------------------------------------------------
@@ -271,7 +276,7 @@ ZTEST(storage_card, test_33a_faixa_e_ignorada_com_aviso)
 
 	zassert_equal((int)LIBRARY_MAX, storage_scan(library, ARRAY_SIZE(library), &skipped));
 	zassert_equal(1U, skipped, "a 33a faixa tinha de ser contada como ignorada");
-	zassert_str_equal("Faixa 31", library[LIBRARY_MAX - 1U].name);
+	zassert_str_equal("T31", library[LIBRARY_MAX - 1U].name);
 }
 
 ZTEST(storage_card, test_excedente_pode_ser_dispensado)
@@ -291,7 +296,7 @@ ZTEST(storage_card, test_capacidade_do_chamador_conta_no_excedente)
 	put_numbered_tracks(3U);
 
 	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), &skipped));
-	zassert_str_equal("Faixa 00", library[0].name);
+	zassert_str_equal("T00", library[0].name);
 	zassert_equal(2U, skipped);
 }
 
@@ -311,107 +316,72 @@ ZTEST(storage_card, test_capacidade_acima_do_teto_vale_o_teto)
 
 /* -------------------------------------------------------------------------
  * Cabeçalhos tortos
+ *
+ * A regra é a do parser, byte a byte: o que a varredura lista como válido a
+ * carga tem de aceitar.
  * ------------------------------------------------------------------------- */
 
-ZTEST(storage_card, test_sem_cabecalho_fica_invalida_com_nome_do_arquivo)
+/** @brief Varre um arquivo só e devolve se ele saiu válido. */
+static bool scan_one_valid(const char *name, const char *text)
 {
 	struct track_meta library[LIBRARY_MAX];
 
-	/* Listada com `!`, e com um nome que o usuário reconhece, em vez de
-	 * sumir da lista sem explicação.
+	put_text(name, text);
+	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
+
+	return library[0].valid;
+}
+
+ZTEST(storage_card, test_sem_cabecalho_fica_invalida_mas_listada)
+{
+	struct track_meta library[LIBRARY_MAX];
+
+	/* Listada com o nome que o usuário reconhece, em vez de sumir da
+	 * lista sem explicação.
 	 */
-	put_text("SEMCAB.TXT", "isto nao e rtttl nenhum");
+	put_text("SEMCAB.CSV", "440,250\n");
 
 	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_str_equal("SEMCAB.TXT", library[0].name);
+	zassert_str_equal("SEMCAB", library[0].name);
 	zassert_false(library[0].valid);
 }
 
-ZTEST(storage_card, test_quebra_de_linha_antes_dos_dois_pontos)
+ZTEST(storage_card, test_cabecalho_com_crlf_vale)
 {
-	struct track_meta library[LIBRARY_MAX];
+	zassert_true(scan_one_valid("WINDOWS.CSV", FUR_ELISE));
+}
 
-	/* O nome não ocupa duas linhas: o `:` da segunda linha não faz da
-	 * primeira um nome.
+ZTEST(storage_card, test_bom_invalida)
+{
+	/* O parser não aceita BOM; listar como válido seria prometer uma faixa
+	 * que a carga recusaria.
 	 */
-	put_text("DUASLIN.TXT", "primeira linha\nNome" BODY);
-
-	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_str_equal("DUASLIN.TXT", library[0].name);
-	zassert_false(library[0].valid);
+	zassert_false(scan_one_valid("BOM.CSV", "\xEF\xBB\xBF" CSV));
 }
 
-ZTEST(storage_card, test_dois_pontos_alem_da_janela)
+ZTEST(storage_card, test_cabecalho_sem_quebra_invalida)
 {
-	struct track_meta library[LIBRARY_MAX];
-
-	/* Setenta caracteres antes do `:` passam da janela de leitura: aquilo
-	 * não é o nome curto de um cabeçalho RTTTL.
-	 */
-	put_text("LONGE.TXT", "0123456789012345678901234567890123456789"
-			      "012345678901234567890123456789" BODY);
-
-	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_false(library[0].valid);
+	zassert_false(scan_one_valid("SO.CSV", "frequency_hz,duration_ms"));
 }
 
-ZTEST(storage_card, test_nome_vazio_usa_o_arquivo_mas_vale)
+ZTEST(storage_card, test_cr_isolado_invalida)
 {
-	struct track_meta library[LIBRARY_MAX];
-
-	/* Cabeçalho legível sem nome: a melodia toca, só não tem como se
-	 * chamar de outro jeito.
-	 */
-	put_text("VAZIO.TXT", BODY);
-
-	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_str_equal("VAZIO.TXT", library[0].name);
-	zassert_true(library[0].valid);
+	zassert_false(scan_one_valid("CR.CSV", "frequency_hz,duration_ms\r440,250\n"));
 }
 
-ZTEST(storage_card, test_bom_linhas_e_espacos_sao_aparados)
+ZTEST(storage_card, test_cabecalho_diferente_invalida)
 {
-	struct track_meta library[LIBRARY_MAX];
-
-	/* O que um editor de texto do Windows costuma deixar no arquivo. */
-	put_text("EDITOR.TXT", "\xEF\xBB\xBF\r\n\t Ode to Joy \t" BODY);
-
-	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_str_equal("Ode to Joy", library[0].name);
-	zassert_true(library[0].valid);
+	zassert_false(scan_one_valid("MAIUSC.CSV", "FREQUENCY_HZ,DURATION_MS\n440,250\n"));
 }
 
-ZTEST(storage_card, test_so_espacos_nao_e_cabecalho)
+ZTEST(storage_card, test_cabecalho_com_coluna_extra_invalida)
 {
-	struct track_meta library[LIBRARY_MAX];
-
-	put_text("BRANCO.TXT", "  \r\n\t ");
-
-	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_false(library[0].valid);
+	zassert_false(scan_one_valid("EXTRA.CSV", "frequency_hz,duration_ms,x\n440,250,1\n"));
 }
 
-ZTEST(storage_card, test_arquivo_menor_que_o_bom)
+ZTEST(storage_card, test_arquivo_menor_que_o_cabecalho)
 {
-	struct track_meta library[LIBRARY_MAX];
-
-	/* Dois bytes: menos do que o BOM ocupa, e ainda assim um cabeçalho. */
-	put_text("CURTO.TXT", "a:");
-
-	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_str_equal("a", library[0].name);
-	zassert_true(library[0].valid);
-}
-
-ZTEST(storage_card, test_nome_longo_e_truncado)
-{
-	struct track_meta library[LIBRARY_MAX];
-
-	put_text("LONGO.TXT", "Um nome de melodia mais longo que o campo" BODY);
-
-	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_equal(TRACK_NAME_MAX - 1U, strlen(library[0].name));
-	zassert_true(library[0].valid);
+	zassert_false(scan_one_valid("CURTO.CSV", "freq"));
 }
 
 /* -------------------------------------------------------------------------
@@ -422,10 +392,10 @@ ZTEST(storage_card, test_arquivo_vazio_fica_invalido)
 {
 	struct track_meta library[LIBRARY_MAX];
 
-	put_file("NADA.TXT", "", 0U);
+	put_file("NADA.CSV", "", 0U);
 
 	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_str_equal("NADA.TXT", library[0].name);
+	zassert_str_equal("NADA", library[0].name);
 	zassert_false(library[0].valid);
 }
 
@@ -434,15 +404,15 @@ ZTEST(storage_card, test_arquivo_maior_que_o_buffer_fica_invalido)
 	struct track_meta library[LIBRARY_MAX];
 
 	/* Um byte além do buffer de faixa: a carga o rejeitaria, e marcar
-	 * agora poupa a tela de erro a quem o selecionasse. O nome continua
-	 * sendo o do cabeçalho.
+	 * agora poupa a tela de erro a quem o selecionasse. O cabeçalho está
+	 * certo: é só o tamanho que a recusa.
 	 */
 	(void)memset(big, 'c', sizeof(big));
-	(void)memcpy(big, "Grande" BODY, strlen("Grande" BODY));
-	put_file("GRANDE.TXT", big, STORAGE_FILE_MAX + 1U);
+	(void)memcpy(big, CSV, strlen(CSV));
+	put_file("GRANDE.CSV", big, STORAGE_FILE_MAX + 1U);
 
 	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_str_equal("Grande", library[0].name);
+	zassert_str_equal("GRANDE", library[0].name);
 	zassert_false(library[0].valid);
 }
 
@@ -451,8 +421,8 @@ ZTEST(storage_card, test_arquivo_do_tamanho_do_buffer_vale)
 	struct track_meta library[LIBRARY_MAX];
 
 	(void)memset(big, 'c', sizeof(big));
-	(void)memcpy(big, "Cheio" BODY, strlen("Cheio" BODY));
-	put_file("CHEIO.TXT", big, STORAGE_FILE_MAX);
+	(void)memcpy(big, CSV, strlen(CSV));
+	put_file("CHEIO.CSV", big, STORAGE_FILE_MAX);
 
 	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
 	zassert_true(library[0].valid, "o teto do buffer e inclusivo");
@@ -504,7 +474,7 @@ ZTEST(storage_card, test_cartao_que_para_de_ler_depois_de_montar)
 {
 	struct track_meta library[LIBRARY_MAX];
 
-	put_text("FAIXA.TXT", "Faixa" BODY);
+	put_text("FAIXA.CSV", CSV);
 	zassert_equal(1, storage_scan(library, ARRAY_SIZE(library), NULL));
 
 	/* O volume segue montado e o diretório, em cache; quem descobre que o
@@ -550,7 +520,7 @@ ZTEST(storage_card, test_remocao_em_qualquer_ponto_da_varredura)
 
 	zassert_equal(3, result, "a varredura nunca chegou ao fim");
 	zassert_true(accesses > 0U, "nenhum ponto de remocao foi exercitado");
-	zassert_str_equal("Faixa 02", library[2].name);
+	zassert_str_equal("T02", library[2].name);
 }
 
 /* -------------------------------------------------------------------------
@@ -608,7 +578,7 @@ static void scan_expecting(int count)
 
 ZTEST(storage_card, test_carga_traz_o_arquivo_inteiro)
 {
-	put_text("FURELIS.TXT", FUR_ELISE);
+	put_text("FURELISE.CSV", FUR_ELISE);
 	scan_expecting(1);
 
 	zassert_equal((int)strlen(FUR_ELISE), storage_load(0, track_buf, sizeof(track_buf)));
@@ -617,22 +587,23 @@ ZTEST(storage_card, test_carga_traz_o_arquivo_inteiro)
 
 ZTEST(storage_card, test_carga_segue_o_indice_da_varredura)
 {
-	put_text("C.TXT", "Charlie" BODY);
-	put_text("A.TXT", "Alfa" BODY);
-	put_text("B.TXT", "Bravo" BODY);
+	put_text("C.CSV", HEADER "300,100\n");
+	put_text("A.CSV", HEADER "100,100\n");
+	put_text("B.CSV", HEADER "200,100\n");
 	scan_expecting(3);
 
 	/* O índice 1 é o segundo arquivo do diretório, não o segundo em ordem
 	 * alfabética: é o que a lista mostrou na posição 1.
 	 */
-	zassert_equal((int)strlen("Alfa" BODY), storage_load(1, track_buf, sizeof(track_buf)));
-	zassert_mem_equal("Alfa" BODY, track_buf, strlen("Alfa" BODY));
+	zassert_equal((int)strlen(HEADER "100,100\n"),
+		      storage_load(1, track_buf, sizeof(track_buf)));
+	zassert_mem_equal(HEADER "100,100\n", track_buf, strlen(HEADER "100,100\n"));
 }
 
 ZTEST(storage_card, test_carga_do_tamanho_do_buffer)
 {
 	fill_pattern(big, STORAGE_FILE_MAX, 0x5AU);
-	put_file("CHEIO.TXT", big, STORAGE_FILE_MAX);
+	put_file("CHEIO.CSV", big, STORAGE_FILE_MAX);
 	scan_expecting(1);
 
 	/* O teto é inclusivo, e o arquivo cheio ocupa oito aglomerados neste
@@ -663,8 +634,8 @@ ZTEST(storage_card, test_carga_de_arquivo_fragmentado)
 
 	fs_file_t_init(&a);
 	fs_file_t_init(&b);
-	zassert_ok(fs_open(&a, CARD_MOUNT_POINT "/FRAG1.TXT", FS_O_CREATE | FS_O_WRITE));
-	zassert_ok(fs_open(&b, CARD_MOUNT_POINT "/FRAG2.TXT", FS_O_CREATE | FS_O_WRITE));
+	zassert_ok(fs_open(&a, CARD_MOUNT_POINT "/FRAG1.CSV", FS_O_CREATE | FS_O_WRITE));
+	zassert_ok(fs_open(&b, CARD_MOUNT_POINT "/FRAG2.CSV", FS_O_CREATE | FS_O_WRITE));
 
 	for (size_t off = 0U; off < STORAGE_FILE_MAX; off += chunk) {
 		zassert_equal((ssize_t)chunk, fs_write(&a, &big[off], chunk));
@@ -685,7 +656,7 @@ ZTEST(storage_card, test_carga_de_arquivo_fragmentado)
 
 ZTEST(storage_card, test_carga_de_arquivo_vazio)
 {
-	put_file("NADA.TXT", "", 0U);
+	put_file("NADA.CSV", "", 0U);
 	scan_expecting(1);
 
 	/* Zero bytes não é erro de carga: o arquivo carregou, e é o
@@ -701,8 +672,8 @@ ZTEST(storage_card, test_carga_de_arquivo_vazio)
 ZTEST(storage_card, test_arquivo_maior_que_o_buffer_e_recusado)
 {
 	(void)memset(big, 'c', sizeof(big));
-	(void)memcpy(big, "Grande" BODY, strlen("Grande" BODY));
-	put_file("GRANDE.TXT", big, STORAGE_FILE_MAX + 1U);
+	(void)memcpy(big, CSV, strlen(CSV));
+	put_file("GRANDE.CSV", big, STORAGE_FILE_MAX + 1U);
 	scan_expecting(1);
 
 	/* Um byte além do teto. Meia melodia sem aviso seria pior que a tela
@@ -719,7 +690,7 @@ ZTEST(storage_card, test_arquivo_maior_que_o_buffer_do_chamador_e_recusado)
 {
 	uint8_t small[16];
 
-	put_text("FURELIS.TXT", FUR_ELISE);
+	put_text("FURELISE.CSV", FUR_ELISE);
 	scan_expecting(1);
 
 	(void)memset(small, UNTOUCHED, sizeof(small));
@@ -735,8 +706,8 @@ ZTEST(storage_card, test_buffer_maior_nao_levanta_o_teto)
 	static uint8_t roomy[2U * STORAGE_FILE_MAX];
 
 	(void)memset(big, 'c', sizeof(big));
-	(void)memcpy(big, "Grande" BODY, strlen("Grande" BODY));
-	put_file("GRANDE.TXT", big, STORAGE_FILE_MAX + 1U);
+	(void)memcpy(big, CSV, strlen(CSV));
+	put_file("GRANDE.CSV", big, STORAGE_FILE_MAX + 1U);
 	scan_expecting(1);
 
 	/* A varredura listou a faixa com `!` por passar do teto. Um chamador
@@ -753,25 +724,21 @@ ZTEST(storage_card, test_buffer_maior_nao_levanta_o_teto)
 /**
  * @brief Percorre a faixa em RAM como o interpretador vai percorrer.
  *
- * Do byte zero ao último, contando as notas do corpo — o que vem depois do
- * segundo `:`. Não é o interpretador, que é outra issue; é a prova de que
- * tudo de que ele vai precisar está no buffer.
+ * Do byte zero ao último, contando as linhas depois do cabeçalho. Não é o
+ * interpretador, que tem suíte própria; é a prova de que tudo de que ele vai
+ * precisar está no buffer.
  */
 static size_t count_notes(const uint8_t *buf, size_t len)
 {
-	size_t colons = 0U;
-	size_t notes = 0U;
+	size_t lines = 0U;
 
 	for (size_t i = 0U; i < len; i++) {
-		if (buf[i] == ':') {
-			colons++;
-		} else if ((colons == 2U) && (buf[i] == ',')) {
-			notes++;
+		if (buf[i] == '\n') {
+			lines++;
 		}
 	}
 
-	/* A última nota não tem vírgula depois. */
-	return (colons == 2U) ? notes + 1U : 0U;
+	return (lines > 0U) ? lines - 1U : 0U;
 }
 
 ZTEST(storage_card, test_reproducao_nao_toca_no_cartao)
@@ -779,7 +746,7 @@ ZTEST(storage_card, test_reproducao_nao_toca_no_cartao)
 	unsigned int reads;
 	int size;
 
-	put_text("FURELIS.TXT", FUR_ELISE);
+	put_text("FURELISE.CSV", FUR_ELISE);
 	scan_expecting(1);
 
 	size = storage_load(0, track_buf, sizeof(track_buf));
@@ -797,8 +764,9 @@ ZTEST(storage_card, test_reproducao_nao_toca_no_cartao)
 	/* Tocar e, no fim, reiniciar: duas passagens do byte zero, sem o
 	 * cartão.
 	 */
-	zassert_equal(40U, count_notes(track_buf, (size_t)size));
-	zassert_equal(40U, count_notes(track_buf, (size_t)size), "reiniciar mudou a faixa");
+	zassert_equal(FUR_ELISE_NOTES, count_notes(track_buf, (size_t)size));
+	zassert_equal(FUR_ELISE_NOTES, count_notes(track_buf, (size_t)size),
+		      "reiniciar mudou a faixa");
 
 	zassert_equal(reads, fake_disk_reads(), "a reproducao leu %u setor(es) do cartao",
 		      fake_disk_reads() - reads);
@@ -808,7 +776,7 @@ ZTEST(storage_card, test_reproducao_nao_toca_no_cartao)
 
 ZTEST(storage_card, test_cargas_seguidas_nao_deixam_arquivo_aberto)
 {
-	put_text("FURELIS.TXT", FUR_ELISE);
+	put_text("FURELISE.CSV", FUR_ELISE);
 	scan_expecting(1);
 
 	/* O FatFs tem CONFIG_FS_FATFS_NUM_FILES objetos de arquivo, alocados
@@ -836,7 +804,7 @@ ZTEST(storage_card, test_carga_recusa_argumentos_invalidos)
 
 ZTEST(storage_card, test_carga_sem_cartao)
 {
-	put_text("FURELIS.TXT", FUR_ELISE);
+	put_text("FURELISE.CSV", FUR_ELISE);
 	scan_expecting(1);
 
 	fake_disk_insert(false);
@@ -869,20 +837,20 @@ ZTEST(storage_card, test_carga_fora_da_biblioteca)
 
 ZTEST(storage_card, test_carga_de_arquivo_que_sumiu)
 {
-	put_text("FURELIS.TXT", FUR_ELISE);
+	put_text("FURELISE.CSV", FUR_ELISE);
 	scan_expecting(1);
 
 	/* O cartão trocado por outro antes de a biblioteca ser varrida de
 	 * novo: o índice existe, o arquivo não.
 	 */
-	zassert_ok(fs_unlink(CARD_MOUNT_POINT "/FURELIS.TXT"));
+	zassert_ok(fs_unlink(CARD_MOUNT_POINT "/FURELISE.CSV"));
 
 	zassert_equal(-ENOENT, storage_load(0, track_buf, sizeof(track_buf)));
 }
 
 ZTEST(storage_card, test_carga_com_cartao_que_para_de_ler)
 {
-	put_text("FURELIS.TXT", FUR_ELISE);
+	put_text("FURELISE.CSV", FUR_ELISE);
 	scan_expecting(1);
 
 	fake_disk_fail_read(true);
@@ -899,7 +867,7 @@ ZTEST(storage_card, test_remocao_em_qualquer_ponto_da_carga)
 	 * pontos onde ser interrompida.
 	 */
 	fill_pattern(big, STORAGE_FILE_MAX, 0x3CU);
-	put_file("CHEIO.TXT", big, STORAGE_FILE_MAX);
+	put_file("CHEIO.CSV", big, STORAGE_FILE_MAX);
 	scan_expecting(1);
 
 	/* A mesma técnica da varredura interrompida: o cartão sai depois de

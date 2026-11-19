@@ -18,10 +18,9 @@
  * loader_poll_event_init() fica pronto quando o resultado de uma
  * solicitação fica disponível, e loader_get_result() o rearma.
  *
- * @note Por ora o loader só entende o formato CSV (`parser_csv`). Com o
- *       `storage_fake` ou com o cartão, cujas faixas são RTTTL, toda carga
- *       falharia na validação. Quando o parser RTTTL entrar, o loader terá
- *       de escolher o parser pelo formato do arquivo.
+ * @note O loader só entende o formato CSV (`parser_csv`), o mesmo que o
+ *       cartão e o `storage_host` listam. Com o `storage_fake`, cujas faixas
+ *       embutidas são RTTTL, toda carga falha na validação.
  */
 
 #ifndef VITROLINHA_LOADER_H_

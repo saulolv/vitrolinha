@@ -394,14 +394,15 @@ FatFs roda sem reentrância e o `fs_read` não trava nada, então sem o
 empréstimo um cartão puxado no meio da varredura seria desmontado por baixo
 dela. Ver a [ADR 0009](docs/adr/0009-a-varredura-empresta-o-volume.md).
 
-A varredura (`src/storage.c`) lê só a raiz, só `.TXT`/`.RTX`/`.RTT`, **na ordem
-do diretório** — é ela que dá sentido a "o 33.º arquivo é ignorado". Arquivo
-sem cabeçalho legível, vazio ou maior que 4 KB entra na lista como inválido,
-com o nome 8.3. No simulador, que não tem disco, o
-`CONFIG_VITROLINHA_STORAGE` põe outra implementação no lugar: a do aplicativo
-lê os CSVs de `fixtures/music` (`storage_host`), porque o loader por ora só
-entende CSV; os testes que não escolhem usam as faixas RTTTL embutidas
-(`storage_fake`).
+A varredura (`src/storage.c`) lê só a raiz, só `.CSV`, **na ordem do
+diretório** — é ela que dá sentido a "o 33.º arquivo é ignorado". O nome
+exibido é o 8.3 do arquivo sem a extensão (`FURELISE.CSV` vira `FURELISE`),
+porque o CSV não tem campo de nome. Arquivo cuja primeira linha não é
+exatamente `frequency_hz,duration_ms`, vazio ou maior que 4 KB entra na lista
+como inválido. No simulador, que não tem disco, o `CONFIG_VITROLINHA_STORAGE`
+põe outra implementação no lugar: a do aplicativo lê os CSVs de
+`fixtures/music` (`storage_host`); os testes que não escolhem usam as faixas
+RTTTL embutidas (`storage_fake`).
 
 A carga (`storage_load`) lê o arquivo **inteiro** e confere o tamanho na
 entrada de diretório **antes** de ler: o arquivo maior que o buffer volta

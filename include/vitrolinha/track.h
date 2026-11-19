@@ -54,9 +54,9 @@ struct track_meta {
 	/**
 	 * @brief Nome exibido, sempre terminado em NUL.
 	 *
-	 * Vem do **cabeçalho RTTTL**, não do nome do arquivo: sem
-	 * `CONFIG_FS_FATFS_LFN` a leitura de diretório devolve 8.3 em
-	 * maiúsculas (`FURELIS.TXT`), ruim numa tela cujo único texto é este.
+	 * No cartão, é o nome 8.3 do arquivo sem a extensão (`FURELISE.CSV`
+	 * vira `FURELISE`): o CSV não tem campo de nome, e sem
+	 * `CONFIG_FS_FATFS_LFN` o diretório só entrega 8.3 em maiúsculas.
 	 */
 	char name[TRACK_NAME_MAX];
 

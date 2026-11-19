@@ -82,7 +82,7 @@ int storage_scan(struct track_meta *out, size_t max, size_t *skipped);
  * gratuito e reduz "reiniciar a faixa" a reinterpretar do byte zero.
  *
  * Os bytes saem como estão no arquivo, BOM e quebras de linha incluídos: o
- * que é ou não RTTTL quem decide é o interpretador. Quando esta função volta,
+ * que é ou não faixa válida quem decide é o interpretador. Quando esta função volta,
  * nada da faixa fica aberto nem emprestado — o cartão pode sair do soquete na
  * nota seguinte.
  *
