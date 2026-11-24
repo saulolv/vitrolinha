@@ -18,4 +18,8 @@ config TEST_EXPECTED_TRACK
 	int "Faixa do instantâneo depois do comando; -1 é TRACK_NONE"
 	default 0
 
+# As opções do projeto: é delas que sai CONFIG_VITROLINHA_PLAYER, sem a qual
+# src/CMakeLists.txt deixaria player e loader fora deste teste.
+rsource "../../Kconfig.vitrolinha"
+
 source "Kconfig.zephyr"

@@ -44,43 +44,36 @@ target_sources_ifdef(CONFIG_LVGL app PRIVATE
 )
 
 # A saída de tom: na placa, o buzzer por PWM; no simulador, a captura em
-# memória. O player entra junto de uma delas, e só onde há uma.
-#
-# O loader entra junto do player, que é o único a chamá-lo, e não na lista
-# comum: ele define uma thread com pilha própria, o buffer de 4 KB da faixa e
-# a fila de 32 eventos — perto de 9 KB de RAM que ficariam reservados para
-# uma thread que nunca parte. O parser_csv fica na lista comum porque não tem
-# estado estático: sem chamador, não custa RAM.
-#
-# Os dois exigem ainda `CONFIG_POLL`: o player espera comando e resultado de
-# carga num mesmo `k_poll`. Os dois alvos e tests/playback/ a ligam; os
-# demais testes não usam o player e ficam sem ele. A omissão não é
-# silenciosa — quem chamar `player_init()` sem a opção não linka.
+# memória.
 #
 # Onde há PWM, ele é a saída — na placa, o buzzer; em tests/tone_pwm/, o PWM
 # de mentira do Zephyr. A captura só entra onde não há: o native_sim liga a
 # libc do computador por padrão, e sem esta precedência o teste do PWM
 # testaria a captura sem perceber.
-set(vitrolinha_has_tone OFF)
-
 if(CONFIG_BOARD_NATIVE_SIM AND CONFIG_EXTERNAL_LIBC)
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/playback_trace.c)
 endif()
 
 if(CONFIG_PWM)
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/tone_pwm.c)
-  set(vitrolinha_has_tone ON)
 elseif(CONFIG_BOARD_NATIVE_SIM AND CONFIG_EXTERNAL_LIBC)
   target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/tone_trace.c)
-  set(vitrolinha_has_tone ON)
 endif()
 
-if(vitrolinha_has_tone AND CONFIG_POLL)
-  target_sources(app PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/player.c
-    ${CMAKE_CURRENT_LIST_DIR}/loader.c
-  )
-endif()
+# O player, só onde há uma saída de tom e `CONFIG_POLL`. Quem decide é
+# `CONFIG_VITROLINHA_PLAYER`, no Kconfig.vitrolinha — a mesma opção que o
+# src/main.c consulta, para que os dois nunca discordem. A omissão não é
+# silenciosa: quem chamar `player_init()` sem a opção não linka.
+#
+# O loader entra junto do player, que é o único a chamá-lo, e não na lista
+# comum: ele define uma thread com pilha própria, o buffer de 4 KB da faixa e
+# a fila de 32 eventos — perto de 9 KB de RAM que ficariam reservados para
+# uma thread que nunca parte. O parser_csv fica na lista comum porque não tem
+# estado estático: sem chamador, não custa RAM.
+target_sources_ifdef(CONFIG_VITROLINHA_PLAYER app PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}/player.c
+  ${CMAKE_CURRENT_LIST_DIR}/loader.c
+)
 
 # Quem responde ao storage.h: o cartão, a implementação de mentira com duas
 # faixas embutidas no binário, ou os CSVs de uma pasta do computador. A escolha
