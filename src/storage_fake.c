@@ -3,9 +3,9 @@
  * @brief Implementação de mentira de @ref storage.h, com faixas embutidas.
  *
  * Serve o contrato inteiro sem cartão, sem sistema de arquivos e sem SPI.
- * Existe para destravar as trilhas A e B antes de o cartão existir e para
- * tornar reproduzíveis os caminhos de falha, que com hardware de verdade
- * dependem de alguém puxar o cartão na hora certa.
+ * Existe para dar aos testes uma biblioteca sem disco e para tornar
+ * reproduzíveis os caminhos de falha, que com hardware de verdade dependem de
+ * alguém puxar o cartão na hora certa.
  *
  * Na placa quem responde é o storage do cartão (`storage.c`), que se apoia
  * no módulo `card`; aqui fica o simulador, que não tem disco. A escolha é do
@@ -23,9 +23,9 @@
 /**
  * @brief Uma faixa embutida no binário.
  *
- * O nome fica ao lado do conteúdo em vez de ser extraído do cabeçalho: a regra
- * de leitura do cabeçalho mora em `storage.c`, e repeti-la aqui seria manter
- * duas cópias dela.
+ * O nome fica ao lado do conteúdo, e não é extraído do cabeçalho: as faixas
+ * são fixas no binário, e quem testa a leitura do cabeçalho é a suíte de
+ * @ref track_rtttl_name.
  */
 struct fake_track {
 	const char *name;

@@ -1,6 +1,6 @@
 /**
  * @file storage_host.c
- * @brief Biblioteca de CSVs em uma pasta do computador, para native_sim.
+ * @brief Biblioteca de faixas em uma pasta do computador, para native_sim.
  *
  * A varredura seleciona VITROLINHA_MUSIC_DIR ou fixtures/music, relativo ao
  * diretório de execução. Pasta e índices ficam mantidos até a próxima
@@ -173,7 +173,7 @@ int storage_scan(struct track_meta *out, size_t max, size_t *skipped)
 	return (int)track_count;
 }
 
-/** @brief Lê o CSV inteiro, rejeitando tamanho excessivo antes de escrever. */
+/** @brief Lê a faixa inteira, rejeitando tamanho excessivo antes de escrever. */
 int storage_load(int track, uint8_t *buf, size_t len)
 {
 	if (buf == NULL || len == 0U) {

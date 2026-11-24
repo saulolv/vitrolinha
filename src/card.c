@@ -47,8 +47,8 @@ LOG_MODULE_REGISTER(card, LOG_LEVEL_INF);
  *
  * Dimensionada com folga por ora: quem monta é esta thread, e montar
  * atravessa o FatFs e a pilha SD inteira. O número definitivo sai da medição
- * do `CONFIG_THREAD_ANALYZER` (issue #13), que é critério de avaliação — não
- * de estimativa.
+ * do `CONFIG_THREAD_ANALYZER`, que é critério de avaliação — não de
+ * estimativa.
  */
 #define CARD_MONITOR_STACK_SIZE 2048
 
@@ -142,7 +142,7 @@ static bool card_slot_occupied(void)
  *
  * Não chama o observador: quem faz isso é @ref card_refresh, depois de soltar
  * a trava. Avisar de dentro dela criaria ordem de travas entre este módulo e
- * quem quer que o observe — a interface, no fim — e essa é a maneira clássica
+ * quem quer que o observe — a biblioteca, no fim — e essa é a maneira clássica
  * de produzir um impasse que só aparece na demonstração.
  *
  * @param state Estado novo.

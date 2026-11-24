@@ -3,9 +3,9 @@
 
   "src/loader.c": {
     "134": "Ramo id != active_id no topo do laco de reposicao. So e tomado se um pedido novo chegar enquanto o worker esta dentro do laco, isto e, se uma thread de prioridade maior preemptar o worker entre duas iteracoes. Em native_sim o tempo nao avanca durante a execucao e o laco nao chama a libc, entao nada preempta o worker ali. A substituicao no meio da leitura do arquivo, que tem o mesmo efeito antes do laco, e coberta em tests/playback (test_loader_pedido_substituido_durante_a_leitura).",
-    "155": "Ramo id != active_id depois de parser_csv_next, pela mesma razao da linha 134: exige que o worker seja preemptado entre a interpretacao do evento e o lock, o que nao acontece em native_sim.",
-    "156": "Ramo status != 1 de parser_csv_next. parser_csv_init valida o buffer inteiro, que e imutavel ate o proximo pedido, entao a iteracao depois dele so devolve evento; 0 nao ocorre porque o laco para antes, em finished. A defesa encerra a fila sem o silencio final, que o player trata como falha (coberto em tests/playback, test_player_falhas_e_comandos_fora_de_hora).",
-    "159": "Mesmo ramo da linha 155, na atribuicao de finished: status != 1 nunca e verdadeiro depois de um parser_csv_init bem-sucedido."
+    "155": "Ramo id != active_id depois de parser_next, pela mesma razao da linha 134: exige que o worker seja preemptado entre a interpretacao do evento e o lock, o que nao acontece em native_sim.",
+    "156": "Ramo status != 1 de parser_next. parser_init valida o buffer inteiro, que e imutavel ate o proximo pedido, entao a iteracao depois dele so devolve evento; 0 nao ocorre porque o laco para antes, em finished. A defesa encerra a fila sem o silencio final, que o player trata como falha (coberto em tests/playback, test_player_falhas_e_comandos_fora_de_hora).",
+    "159": "Mesmo ramo da linha 155, na atribuicao de finished: status != 1 nunca e verdadeiro depois de um parser_init bem-sucedido."
   },
 
   "src/player.c": {
