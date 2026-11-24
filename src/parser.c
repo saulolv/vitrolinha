@@ -16,14 +16,11 @@
 #define CONFIG_VITROLINHA_TRANSPOSE_MIN_HZ 0
 #endif
 
-/** @brief A primeira linha de todo CSV de faixa. */
-static const char csv_header[] = "frequency_hz,duration_ms";
-
 /** @brief O buffer começa pelo cabeçalho do CSV? */
 static bool is_csv(const uint8_t *buffer, size_t length)
 {
-	return (length >= (sizeof(csv_header) - 1U)) &&
-	       (memcmp(buffer, csv_header, sizeof(csv_header) - 1U) == 0);
+	return (length >= (sizeof(PARSER_CSV_HEADER) - 1U)) &&
+	       (memcmp(buffer, PARSER_CSV_HEADER, sizeof(PARSER_CSV_HEADER) - 1U) == 0);
 }
 
 int parser_init(struct parser *parser, const uint8_t *buffer, size_t length,

@@ -29,6 +29,15 @@
 extern "C" {
 #endif
 
+/**
+ * @brief A primeira linha de todo CSV de faixa, sem o fim de linha.
+ *
+ * Uma constante só para o parser, a fachada que reconhece o formato e a
+ * varredura do cartão: conferir o cabeçalho com regra mais frouxa em um deles
+ * listaria como válida uma faixa que a carga recusaria.
+ */
+#define PARSER_CSV_HEADER "frequency_hz,duration_ms"
+
 /** @brief Localização de um erro de validação. */
 struct parser_csv_error {
 	/** @brief Linha a partir de 1; zero para erro sem linha associada. */

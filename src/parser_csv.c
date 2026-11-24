@@ -156,7 +156,7 @@ static int read_event(struct parser_csv *parser, struct playback_event *out,
 int parser_csv_init(struct parser_csv *parser, const uint8_t *buffer,
 		    size_t length, struct parser_csv_error *error)
 {
-	static const char header[] = "frequency_hz,duration_ms";
+	static const char header[] = PARSER_CSV_HEADER;
 
 	if (error != NULL) {
 		*error = (struct parser_csv_error){0};
