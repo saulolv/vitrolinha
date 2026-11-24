@@ -8,6 +8,12 @@
  *
  * A biblioteca chega só por leituras atômicas de library.h: o player nunca
  * espera a varredura nem a trava da lista (ADR 0010).
+ *
+ * Avanço automático (RF09, `CONFIG_VITROLINHA_AUTO_ADVANCE`): o fim da faixa
+ * é visto no callback do timer, em interrupção, onde não se carrega arquivo.
+ * O callback só marca @ref ended e levanta @ref end_signal; a thread acorda
+ * e pede a vizinha seguinte como faria um ::CMD_NEXT — mas sem dar a volta:
+ * depois da última faixa válida, ou com uma só, o player para.
  */
 #include <vitrolinha/player.h>
 #include <vitrolinha/cmd.h>
@@ -50,6 +56,12 @@ static struct playback_event next;
 static uint32_t request_id;
 static bool loading;
 
+/** @brief Fim de faixa visto pelo callback, à espera da thread. Sob @ref lock. */
+static bool ended;
+
+/** @brief Acorda a thread no fim da faixa; levantado em interrupção. */
+static struct k_poll_signal end_signal = K_POLL_SIGNAL_INITIALIZER(end_signal);
+
 static uint64_t now_us(void)
 {
 	return k_ticks_to_us_floor64(k_uptime_ticks());
@@ -85,6 +97,11 @@ static void apply_current(void)
 		state.state = PLAYER_STOPPED;
 		state.base_us = state.total_us;
 		snapshot_publish(&state);
+		if (IS_ENABLED(CONFIG_VITROLINHA_AUTO_ADVANCE)) {
+			/* Só sinaliza: carregar a próxima é da thread. */
+			ended = true;
+			k_poll_signal_raise(&end_signal, 0);
+		}
 	} else if (status != 1) {
 		/* Fila vazia antes do silêncio final é falha, não fim de faixa. */
 		stop_at(current.offset_us);
@@ -120,8 +137,28 @@ static void select_track(int track)
 	snapshot_publish(&state);
 }
 
+/**
+ * @brief Avanço automático: a faixa seguinte, se houver uma adiante.
+ *
+ * O vizinho de library_neighbor dá a volta nas pontas, e é por isso que só
+ * vale um índice maior que o atual: a volta, inclusive a da faixa única que
+ * é vizinha de si mesma, quer dizer que a lista acabou. ::TRACK_NONE —
+ * cartão fora, nenhuma válida — também não é maior, e o player fica parado
+ * em 100%.
+ */
+static void advance(void)
+{
+	int track = library_neighbor(state.track, true);
+
+	if (track > state.track) {
+		select_track(track);
+	}
+}
+
 static void handle_command(const struct cmd *command)
 {
+	/* O comando do usuário vence o avanço automático da mesma volta. */
+	ended = false;
 	/* Sem default: cmd_post() recusa tipos desconhecidos na entrada. */
 	switch (command->kind) {
 	case CMD_SELECT:
@@ -142,6 +179,16 @@ static void handle_command(const struct cmd *command)
 		}
 		break;
 	}
+	case CMD_CUE:
+		/* Só sem faixa nenhuma, isto é, no boot: nunca troca a escolha
+		 * do usuário. Sem faixa também não há carga nem pedido retido,
+		 * e tocar/pausar passa a carregar esta.
+		 */
+		if (state.track == TRACK_NONE) {
+			state.track = command->track;
+			snapshot_publish(&state);
+		}
+		break;
 	case CMD_STOP:
 		if (loading) {
 			(void)loader_cancel(request_id);
@@ -233,22 +280,32 @@ static void player_worker(void *a, void *b, void *c)
 	ARG_UNUSED(a);
 	ARG_UNUSED(b);
 	ARG_UNUSED(c);
-	struct k_poll_event events[2];
+	struct k_poll_event events[3];
 
 	cmd_poll_event_init(&events[0]);
-	loader_poll_event_init(&events[1]);
+	k_poll_event_init(&events[1], K_POLL_TYPE_SIGNAL, K_POLL_MODE_NOTIFY_ONLY, &end_signal);
+	loader_poll_event_init(&events[2]);
 	for (;;) {
 		struct cmd command;
 
 		events[0].state = K_POLL_STATE_NOT_READY;
 		events[1].state = K_POLL_STATE_NOT_READY;
+		events[2].state = K_POLL_STATE_NOT_READY;
 		/* O resultado do loader só interessa, e só acorda, durante a carga. */
-		(void)k_poll(events, loading ? 2 : 1, K_FOREVER);
+		(void)k_poll(events, loading ? 3 : 2, K_FOREVER);
 		int err = cmd_get(&command, K_NO_WAIT);
 		k_spinlock_key_t key = k_spin_lock(&lock);
 
+		/* Sob o lock do callback: ou o fim já está em @ref ended, ou o
+		 * sinal levantado depois deste reset acorda a thread de novo.
+		 */
+		k_poll_signal_reset(&end_signal);
 		if (err == 0) {
 			handle_command(&command);
+		}
+		if (ended) {
+			ended = false;
+			advance();
 		}
 		if (loading) {
 			check_load();

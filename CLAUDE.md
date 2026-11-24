@@ -122,6 +122,12 @@ CONFIG_FS_FATFS_MOUNT_MKFS=n                 # o padrão é y, e FORMATA o cart�
 CONFIG_FS_FATFS_NUM_FILES=2                  # o padrão de 4 é pré-alocado estaticamente
 CONFIG_FS_FATFS_NUM_DIRS=2
 
+CONFIG_FLASH=y                               # RF10: settings em NVS na flash interna,
+CONFIG_FLASH_MAP=y                           # na zephyr,settings-partition da placa
+CONFIG_NVS=y
+CONFIG_SETTINGS=y
+CONFIG_SETTINGS_NVS=y
+
 CONFIG_THREAD_ANALYZER=y                     # critério de avaliação: pilha por thread
 CONFIG_THREAD_ANALYZER_AUTO=y
 CONFIG_THREAD_ANALYZER_AUTO_THREAD_PRIORITY_OVERRIDE=y
@@ -242,10 +248,47 @@ mora na tabela de `src/buttons.c` e no `DISPLAY_TOGGLE_BUTTON`, que um
 `BUILD_ASSERT` mantém juntos. No simulador, as teclas 1 a 4 são os botões 1 a 4.
 Não há botão de reiniciar: tocar depois do fim, ou clicar de novo a faixa.
 
-No fim da faixa o player **para e permanece na tela de reprodução**, com o
-progresso em 100%; o botão de tocar reinicia do começo. Isso deixa o avanço
-automático (RF09) como troca de uma linha na E7 — em vez de "parar", "carregar a
-próxima".
+### Fim de faixa
+
+No fim da faixa o player **carrega a seguinte sozinho** (RF09,
+`CONFIG_VITROLINHA_AUTO_ADVANCE`, ligado por padrão). Quem vê o fim é o
+callback do `k_timer`, em interrupção, onde não se carrega arquivo: ele publica
+"parado em 100%", marca o fim e levanta um `k_poll_signal`; a thread `player`
+acorda e pede a vizinha seguinte por `library_neighbor`, como um `CMD_NEXT` —
+pulando as faixas com `!`. Um comando do usuário na mesma volta vence o avanço.
+
+O avanço **não dá a volta**: depois da última faixa válida o player para em
+100% e fica na tela de reprodução, e o botão de tocar reinicia a faixa. Com
+**uma única faixa válida** a vizinha dela é ela mesma, o que seria repetir para
+sempre — também para. Com o **cartão fora** não há vizinha (`TRACK_NONE`): a
+faixa em RAM termina e o player para. Uma seguinte que passa na varredura mas o
+parser recusa para o avanço nela, com a tela de erro e o `!`, como faria um
+"seguinte" do usuário. Os quatro casos estão em `tests/auto_advance/`.
+
+## Extensões da E7
+
+- **Avanço automático (RF09)**: ver "Fim de faixa", acima.
+- **Última faixa lembrada (RF10)**, `src/last_track.c`. Settings com NVS na
+  partição `storage` da **flash interna** — a `zephyr,settings-partition` que a
+  ZBook já declara, 256 KB no fim dos 2 MB —, **nunca no cartão**. A faixa é
+  reconhecida pelo **nome exibido e pelo índice**: volta a do índice gravado se
+  o nome bater, senão a primeira válida com o nome, o que sobrevive a um
+  arquivo novo mudando a ordem. Grava numa thread de prioridade 13, com
+  debounce de 2 s, e **só com o player fora de tocando**, sob `k_sched_lock`:
+  no RP2350 o `flash_rpi_pico` faz `irq_lock` em toda escrita e apagamento, e
+  um apagamento de setor do NVS passa de dezenas de ms. Custo aceito: a faixa
+  que toca sem pausa só é lembrada quando parar ou pausar. No boot, com a
+  biblioteca pronta, volta como seleção — `CMD_CUE` no player, que só aceita
+  enquanto não tem faixa, e `display_cue` no destaque —, sem tocar. No
+  simulador, a flash é o arquivo `flash.bin` (ou o de `-flash=<arquivo>`), e a
+  faixa sobrevive a um reinício do processo.
+- **LEDs de estado (RF11)**, `src/status_led.c`. Os quatro WS2812 do alias
+  `led-strip` (GPIO 31, PIO1 — não disputam o PWM do buzzer) pela API
+  `led_strip`. Uma thread de prioridade 11 lê o instantâneo a 10 Hz e só
+  reescreve a fita quando a cor muda: verde tocando, âmbar pausado, vermelho com
+  erro de carga ou sem biblioteca, apagado parado, brilho 16/255. Nada no
+  callback do timer. No simulador não há WS2812; `tests/status_led/` usa uma
+  fita de mentira que registra as cores.
 
 ## Temporização — a parte que sustenta o RNF01 e o RNF02
 
@@ -367,6 +410,8 @@ cartão possa atrasar a próxima nota.
 | `ui` | Telas LVGL, máquina de estados de navegação |
 | `input` | Botões de transporte pelo subsistema `input`, virando comandos em fila |
 | `volume` | Leitura filtrada do ADC (opcional, pós-MVP) |
+| `last_track` | Última faixa na flash interna pelo `settings`, e a volta dela no boot (RF10) |
+| `status_led` | Estado do instantâneo nos WS2812 (RF11) |
 
 ### Threads
 
@@ -377,7 +422,9 @@ cartão possa atrasar a próxima nota.
 | `input` | Média-alta | Traduz eventos em comandos e publica em fila |
 | `ui` | Baixa | Laço do LVGL em intervalo fixo, redesenho por região suja |
 | `loader` | Baixa | Lê o arquivo para o buffer, interpreta e preenche a fila de eventos |
-| `card` | A mais baixa (12) | Sonda o soquete a cada 250 ms, monta e desmonta. É a única que bloqueia por mais de um milissegundo |
+| `status_led` | Baixa (11) | Lê o instantâneo a 10 Hz e pinta os WS2812 quando a cor muda |
+| `card` | Baixa (12) | Sonda o soquete a cada 250 ms, monta e desmonta. É a única que bloqueia por mais de um milissegundo |
+| `last_track` | A mais baixa (13) | Grava a última faixa na flash, com debounce e só com o player fora de tocando |
 
 O `loader` interpreta **do buffer em RAM**, não do cartão.
 
@@ -542,6 +589,9 @@ tentativa no `prj.conf`.
   oscila sozinho.
 - Não escrever no cartão durante a reprodução: o `sdhc_spi_wait_unbusy` tem um
   laço de espera sem decremento no caminho de escrita.
+- Não escrever na flash interna com o player tocando: o driver do RP2350 trava
+  as interrupções durante a escrita e o apagamento, e o callback da próxima
+  nota esperaria. Só o `last_track` escreve, e só fora de tocando.
 
 ## Riscos
 
@@ -621,7 +671,10 @@ pela regra de folga de `docs/medicoes/pilhas-por-thread.md` — e `k_cycle_get_6
 - **E5** Tocar, pausar, avançar e retroceder durante a reprodução. — **fim do MVP**
 - **E6** Coleta das métricas, relatório e demonstração.
 - **E7** Opcionais: volume pelo potenciômetro, persistência de preferências,
-  avanço automático de faixa, sinalização por LEDs RGB.
+  avanço automático de faixa, sinalização por LEDs RGB. Feitos o avanço
+  automático, a última faixa lembrada e os LEDs (issue #32, ver "Extensões da
+  E7"), verificados no simulador; falta conferir na placa o sinal dos WS2812,
+  o tempo da escrita na flash e o som da transição entre faixas.
 
 ## Ideias já levantadas, ainda não implementadas
 

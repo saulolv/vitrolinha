@@ -78,6 +78,14 @@ quadratura A/B limpa, que duas teclas não produzem, então `src/sim_encoder.c`
 converte as setas direto em `INPUT_REL_WHEEL` — o mesmo evento que o driver
 emitiria. É código testado como qualquer outro.
 
+**A última faixa lembrada** fica na flash simulada, que o simulador guarda
+no arquivo `flash.bin` do diretório de execução (fora do git). Rodar o
+binário duas vezes com o mesmo arquivo — ou com `-flash=<arquivo>` — mostra a
+faixa voltando como seleção no segundo boot; `-flash_erase` começa do zero.
+Os LEDs RGB não existem aqui: o módulo deles só entra onde há fita no alias
+`led-strip`, e é testado com uma fita de mentira em
+[`tests/status_led/`](tests/status_led/).
+
 **O que o simulador não faz:** som. Não existe PWM emulado no Zephyr, e ouvir
 a melodia continua exigindo a placa. Ele também não substitui a bancada em
 nada da E1 — limiar do piezo, estalo na troca de nota, ordem física dos
@@ -133,6 +141,13 @@ do arquivo. A regra é estreita de propósito — a linha tem de ser **só** a
 chamada de log —, e uma linha de log que nunca executa continua reprovando.
 
 Relatório navegável em `build-out/coverage/index.html`.
+
+As extensões da E7 têm suítes de ponta a ponta, com o player de verdade e a
+captura de tons: [`tests/auto_advance/`](tests/auto_advance/) (a seguinte
+começa sozinha, pula a faixa com `!`, não dá a volta, para com o cartão
+fora), [`tests/last_track/`](tests/last_track/) (o `settings` sobre a flash
+simulada, relido como num reinício) e [`tests/status_led/`](tests/status_led/)
+(as cores que chegam à fita em cada estado).
 
 ### Nada escapa da medição
 

@@ -76,6 +76,9 @@ KNOBS = {
     # a saída PWM.
     "loader_thread": "`LOADER_STACK_SIZE` (`src/loader.c`)",
     "player_thread": "`PLAYER_STACK_SIZE` (`src/player.c`)",
+    # As extensões da E7 (issue #32).
+    "last_track_thread": "`LAST_TRACK_STACK_SIZE` (`src/last_track.c`)",
+    "status_led_thread": "`STATUS_LED_STACK_SIZE` (`src/status_led.c`)",
 }
 
 # ---------------------------------------------------------------------------

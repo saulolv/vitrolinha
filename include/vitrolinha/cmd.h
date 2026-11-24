@@ -44,6 +44,14 @@ enum cmd_kind {
 	CMD_SELECT,
 	/** @brief Interrompe a reprodução e volta ao início. */
 	CMD_STOP,
+	/**
+	 * @brief Deixa a faixa indicada como a do player, sem tocar.
+	 *
+	 * É como a última faixa lembrada volta no boot (RF10): tocar/pausar
+	 * passa a tocá-la. Só vale enquanto o player não tem faixa nenhuma —
+	 * nunca troca uma escolha do usuário.
+	 */
+	CMD_CUE,
 
 	/** @brief Sentinela; não é um comando. */
 	CMD_KIND_COUNT,
@@ -56,7 +64,7 @@ struct cmd {
 	/**
 	 * @brief Faixa alvo.
 	 *
-	 * Só tem significado em ::CMD_SELECT. Nos demais comandos vale
+	 * Só tem significado em ::CMD_SELECT e ::CMD_CUE. Nos demais vale
 	 * ::TRACK_NONE — quem decide a faixa é a máquina de estados do
 	 * `player`, não quem apertou o botão.
 	 */
@@ -78,11 +86,11 @@ struct cmd {
  * callbacks do subsistema `input` podem rodar em interrupção.
  *
  * @param kind  Comando a enviar.
- * @param track Faixa alvo. Obrigatória e não negativa em ::CMD_SELECT;
- *              ignorada nos demais, que gravam ::TRACK_NONE.
+ * @param track Faixa alvo. Obrigatória e não negativa em ::CMD_SELECT e
+ *              ::CMD_CUE; ignorada nos demais, que gravam ::TRACK_NONE.
  *
  * @retval 0        Enfileirado.
- * @retval -EINVAL  @p kind desconhecido, ou ::CMD_SELECT com @p track
+ * @retval -EINVAL  @p kind desconhecido, ou ::CMD_SELECT/::CMD_CUE com @p track
  *                  negativo ou além de ::LIBRARY_MAX.
  * @retval -ENOMSG  Fila cheia. O comando foi descartado.
  */

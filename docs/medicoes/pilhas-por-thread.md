@@ -99,6 +99,8 @@ o que o linker reservou de fato. Total: **16 704 B** de pilha, 3,1% da SRAM.
 | `shell_uart` | 14 | 2048 | `CONFIG_SHELL_STACK_SIZE` | Shell, inclusive `lvgl stats memory` e os comandos de pilha |
 | `input` | 14 | 1024 | `CONFIG_INPUT_THREAD_STACK_SIZE` | Os callbacks do subsistema `input`, incluindo o do encoder do LVGL |
 | `idle` | 15 | 320 | `CONFIG_IDLE_STACK_SIZE` | Nada; só recebe quadro de exceção |
+| `status_led_thread` | 11 | 1024 | `STATUS_LED_STACK_SIZE` (`src/status_led.c`) | Lê o instantâneo e escreve nos WS2812 pelo PIO (RF11) |
+| `last_track_thread` | 13 | 1536 | `LAST_TRACK_STACK_SIZE` (`src/last_track.c`) | Grava a última faixa: `settings` mais NVS mais o driver de flash (RF10) |
 
 As threads `player_thread` (prioridade 4, 2048 B) e `loader_thread`
 (prioridade 8, 4096 B) já existem, mas **só no simulador**: na placa falta a

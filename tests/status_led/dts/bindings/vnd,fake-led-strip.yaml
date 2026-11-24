@@ -1,0 +1,7 @@
+description: |
+  Fita de LEDs de mentira para os testes: registra as cores pedidas, em vez
+  de mandá-las a um WS2812.
+
+compatible: "vnd,fake-led-strip"
+
+include: [base.yaml, led-strip.yaml]

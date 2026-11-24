@@ -25,3 +25,6 @@ venv/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Flash simulada do native_sim, onde o settings guarda a última faixa
+flash.bin

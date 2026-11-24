@@ -9,12 +9,16 @@
   },
 
   "src/player.c": {
-    "72": "Ramo interno do macro K_TIMEOUT_ABS_TICKS, que faz CLAMP(t, 0, INT64_MAX - 1). O prazo e base_us + offset_us em ticks, sempre positivo e muito abaixo de INT64_MAX, entao os ramos de saturacao do CLAMP nao sao do codigo do player e nunca sao tomados.",
-    "84": "Ramos current.offset_us != total_us e current.freq_hz != 0 com status == 0. loader_next_event so devolve 0 depois de entregar o ultimo evento do parser, que e sempre o silencio em total_us; as duas condicoes sao defesa contra uma fila encerrada antes dele, que o parser validado nao produz (ver src/loader.c, linha 156). A fila que para de entregar antes do fim, por -ESTALE, e coberta pelo ramo seguinte.",
-    "101": "Ramo state != PLAYER_PLAYING no callback do timer. Todo caminho que tira o player de PLAYING para o timer sob o mesmo spinlock do callback, e num nucleo so o spinlock mascara a interrupcao: ou o callback rodou antes, ou o k_timer_stop removeu o prazo e ele nao roda mais. A guarda so teria efeito com mais de um nucleo.",
-    "126": "Saida do switch sem nenhum case. cmd_post recusa tipo desconhecido com -EINVAL, e a fila de comandos e privada de cmd.c, entao o player so recebe os cinco comandos tratados.",
-    "209": "Ramo loader_next_event != 1 depois de um resultado pronto e sem erro. O loader so marca pronto um resultado bem-sucedido quando a fila esta cheia ou ja contem o silencio final, entao ha sempre ao menos um evento. A defesa trata o caso como carga recusada.",
-    "216": "Ramo failure == 0, que troca o erro por -EIO. So e tomado pela terceira condicao da linha 209 (loader_next_event != 1 depois de um resultado pronto e sem erro), que pela razao registrada naquela linha nao ocorre; existe para que uma carga que falhou nunca seja publicada como load_error 0."
+    "84": "Ramo interno do macro K_TIMEOUT_ABS_TICKS, que faz CLAMP(t, 0, INT64_MAX - 1). O prazo e base_us + offset_us em ticks, sempre positivo e muito abaixo de INT64_MAX, entao os ramos de saturacao do CLAMP nao sao do codigo do player e nunca sao tomados.",
+    "96": "Ramos current.offset_us != total_us e current.freq_hz != 0 com status == 0. loader_next_event so devolve 0 depois de entregar o ultimo evento do parser, que e sempre o silencio em total_us; as duas condicoes sao defesa contra uma fila encerrada antes dele, que o parser validado nao produz (ver src/loader.c, linha 156). A fila que para de entregar antes do fim, por -ESTALE, e coberta pelo ramo seguinte.",
+    "118": "Ramo state != PLAYER_PLAYING no callback do timer. Todo caminho que tira o player de PLAYING para o timer sob o mesmo spinlock do callback, e num nucleo so o spinlock mascara a interrupcao: ou o callback rodou antes, ou o k_timer_stop removeu o prazo e ele nao roda mais. A guarda so teria efeito com mais de um nucleo.",
+    "163": "Saida do switch sem nenhum case. cmd_post recusa tipo desconhecido com -EINVAL, e a fila de comandos e privada de cmd.c, entao o player so recebe os seis comandos tratados.",
+    "256": "Ramo loader_next_event != 1 depois de um resultado pronto e sem erro. O loader so marca pronto um resultado bem-sucedido quando a fila esta cheia ou ja contem o silencio final, entao ha sempre ao menos um evento. A defesa trata o caso como carga recusada.",
+    "263": "Ramo failure == 0, que troca o erro por -EIO. So e tomado pela terceira condicao da linha 256 (loader_next_event != 1 depois de um resultado pronto e sem erro), que pela razao registrada naquela linha nao ocorre; existe para que uma carga que falhou nunca seja publicada como load_error 0."
+  },
+
+  "src/last_track.c": {
+    "92": "Ramo err != 0 de settings_subsys_init. No native_sim o backend e o NVS sobre a flash simulada, que sempre inicializa; nao ha como fazer o subsistema falhar sem trocar a flash por baixo do teste. A falha, se acontecer na placa, so impede a leitura: o main registra o erro e a restauracao responde que nada foi gravado."
   },
 
   "src/snapshot.c": {
