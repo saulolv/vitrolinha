@@ -59,7 +59,7 @@ ZTEST(parser_csv, test_escala_fixture)
 {
 	const uint32_t frequencies[] = {523, 587, 659, 698, 784, 880, 988, 1047};
 	struct parser_csv parser;
-	struct parser_csv_error error = {.line = 99U, .column = 99U};
+	struct parser_error error = {.line = 99U, .column = 99U};
 
 	zassert_ok(parser_csv_init(&parser, escala, sizeof(escala), &error));
 	zassert_equal(0U, error.line);
@@ -84,7 +84,7 @@ ZTEST(parser_csv, test_faixa_longa_valida_inteira)
 {
 	struct parser_csv parser;
 	struct playback_event event;
-	struct parser_csv_error error = {.line = 99U, .column = 99U};
+	struct parser_error error = {.line = 99U, .column = 99U};
 	uint32_t previous = 0U;
 	size_t events = 0U;
 	int status;
@@ -113,7 +113,7 @@ ZTEST(parser_csv, test_faixa_longa_valida_inteira)
 ZTEST(parser_csv, test_calibracao_um_minuto_de_notas_identicas)
 {
 	struct parser_csv parser;
-	struct parser_csv_error error = {.line = 99U, .column = 99U};
+	struct parser_error error = {.line = 99U, .column = 99U};
 
 	/* O instrumento do RNF01: cada nota começa num múltiplo exato de
 	 * 250 ms, e a última termina em 60 s. Um tom de 200 ms e 50 ms de
@@ -217,7 +217,7 @@ ZTEST(parser_csv, test_rewind_parcial_e_apos_fim)
 ZTEST(parser_csv, test_argumentos_invalidos)
 {
 	struct parser_csv parser = {0};
-	struct parser_csv_error error = {.line = 99U, .column = 99U};
+	struct parser_error error = {.line = 99U, .column = 99U};
 	struct playback_event event = {.offset_us = 123U, .freq_hz = 456U};
 
 	zassert_equal(-EINVAL, parser_csv_init(NULL, escala, sizeof(escala), &error));
@@ -252,7 +252,7 @@ ZTEST(parser_csv, test_cabecalho_invalido_ou_sem_notas)
 
 	for (size_t i = 0; i < ARRAY_SIZE(cases); i++) {
 		struct parser_csv parser;
-		struct parser_csv_error error;
+		struct parser_error error;
 
 		zassert_equal(-EINVAL, parser_csv_init(&parser, (const uint8_t *)cases[i].csv,
 						     strlen(cases[i].csv), &error), "caso %zu", i);
@@ -292,7 +292,7 @@ ZTEST(parser_csv, test_linhas_invalidas_e_localizacao)
 
 	for (size_t i = 0; i < ARRAY_SIZE(cases); i++) {
 		struct parser_csv parser;
-		struct parser_csv_error error;
+		struct parser_error error;
 
 		zassert_equal(-EINVAL, parser_csv_init(&parser, (const uint8_t *)cases[i].csv,
 						     strlen(cases[i].csv), &error), "caso %zu", i);
@@ -324,7 +324,7 @@ ZTEST(parser_csv, test_limites_e_overflow)
 	expect_event(&parser, 4294966000U, 0U);
 	expect_event(&parser, 4294967000U, 0U);
 	for (size_t i = 0; i < ARRAY_SIZE(cases); i++) {
-		struct parser_csv_error error;
+		struct parser_error error;
 
 		zassert_equal(-ERANGE, parser_csv_init(&parser, (const uint8_t *)cases[i].csv,
 						     strlen(cases[i].csv), &error), "caso %zu", i);
@@ -350,7 +350,7 @@ ZTEST(parser_csv, test_frequencia_fora_da_faixa_da_saida)
 		{HEADER "\n440,100\n4294967295,100", 3U},
 	};
 	struct parser_csv parser;
-	struct parser_csv_error error;
+	struct parser_error error;
 
 	zassert_ok(parser_csv_init(&parser, edges, sizeof(edges) - 1U, NULL));
 	expect_event(&parser, 0U, TONE_FREQ_MIN_HZ);
@@ -377,7 +377,7 @@ ZTEST(parser_csv, test_validacao_integral_e_reinicializacao)
 {
 	static const uint8_t bad[] = HEADER "\n1000,200\n1500,0";
 	struct parser_csv parser;
-	struct parser_csv_error error;
+	struct parser_error error;
 	struct playback_event event;
 
 	zassert_ok(parser_csv_init(&parser, escala, sizeof(escala), NULL));
@@ -400,7 +400,7 @@ ZTEST(parser_csv, test_nul_interno_e_byte_nao_ascii)
 	static const uint8_t nul[] = HEADER "\n1,2\0\n1,3";
 	static const uint8_t non_ascii[] = HEADER "\n\xff,2";
 	struct parser_csv parser;
-	struct parser_csv_error error;
+	struct parser_error error;
 
 	zassert_equal(-EINVAL, parser_csv_init(&parser, nul, sizeof(nul) - 1U, &error));
 	zassert_equal(2U, error.line);

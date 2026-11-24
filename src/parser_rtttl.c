@@ -164,7 +164,7 @@ static bool duration_valid(uint32_t duration)
 }
 
 /** @brief Converte a posição do erro em linha e coluna, e devolve @p code. */
-static int fail(const uint8_t *buffer, size_t pos, struct parser_csv_error *error, int code)
+static int fail(const uint8_t *buffer, size_t pos, struct parser_error *error, int code)
 {
 	if (error != NULL) {
 		size_t line = 1U;
@@ -191,7 +191,7 @@ static int fail(const uint8_t *buffer, size_t pos, struct parser_csv_error *erro
  * não pode atravessar uma quebra de linha: sem `:` na primeira linha, o
  * arquivo não é RTTTL.
  */
-static int read_header(struct parser_rtttl *parser, struct parser_csv_error *error)
+static int read_header(struct parser_rtttl *parser, struct parser_error *error)
 {
 	const uint8_t *buffer = parser->buffer;
 	size_t length = parser->length;
@@ -271,7 +271,7 @@ static int read_header(struct parser_rtttl *parser, struct parser_csv_error *err
  *            começo da próxima, ou no fim do buffer.
  */
 static int read_note(const struct parser_rtttl *parser, size_t *pos, struct note *out,
-		     struct parser_csv_error *error)
+		     struct parser_error *error)
 {
 	const uint8_t *buffer = parser->buffer;
 	size_t length = parser->length;
@@ -376,10 +376,10 @@ int parser_rtttl_rewind(struct parser_rtttl *parser)
 }
 
 int parser_rtttl_init(struct parser_rtttl *parser, const uint8_t *buffer, size_t length,
-		      struct parser_csv_error *error, uint32_t transpose_min_hz)
+		      struct parser_error *error, uint32_t transpose_min_hz)
 {
 	if (error != NULL) {
-		*error = (struct parser_csv_error){0};
+		*error = (struct parser_error){0};
 	}
 
 	if (parser == NULL) {

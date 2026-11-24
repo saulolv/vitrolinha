@@ -93,7 +93,7 @@ static void loader_worker(void *a, void *b, void *c)
 			continue;
 		}
 		if (id != worker_id) {
-			struct parser_csv_error error = {0};
+			struct parser_error error = {0};
 			int status;
 
 			worker_id = id;

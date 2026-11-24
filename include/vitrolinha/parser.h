@@ -47,7 +47,7 @@ struct parser {
  * @return Os de @ref parser_csv_init ou de @ref parser_rtttl_init.
  */
 int parser_init(struct parser *parser, const uint8_t *buffer, size_t length,
-		struct parser_csv_error *error);
+		struct parser_error *error);
 
 /** @brief Próximo evento; os retornos de @ref parser_csv_next. */
 int parser_next(struct parser *parser, struct playback_event *out);

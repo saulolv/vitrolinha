@@ -95,7 +95,7 @@ struct parser_rtttl {
  *                 saída não toca, ou faixa mais longa que 32 bits de µs.
  */
 int parser_rtttl_init(struct parser_rtttl *parser, const uint8_t *buffer, size_t length,
-		      struct parser_csv_error *error, uint32_t transpose_min_hz);
+		      struct parser_error *error, uint32_t transpose_min_hz);
 
 /**
  * @brief Obtém o próximo evento, incluindo o silêncio final da faixa.

@@ -24,7 +24,7 @@ static bool is_csv(const uint8_t *buffer, size_t length)
 }
 
 int parser_init(struct parser *parser, const uint8_t *buffer, size_t length,
-		struct parser_csv_error *error)
+		struct parser_error *error)
 {
 	if (parser == NULL) {
 		/* Os dois parsers recusam do mesmo jeito; o CSV também zera o erro. */
