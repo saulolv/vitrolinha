@@ -4,9 +4,9 @@
  *
  * É a metade de plataforma do módulo `storage` — a que sabe que existe FAT,
  * SPI e pino de detecção. A outra metade, @ref storage.h, fala de faixas e
- * não sabe nada disto. A separação é o que permite à varredura (issue #10) e
- * à carga (issue #11) tratarem "sem cartão" como um código de erro em vez de
- * uma consulta a hardware.
+ * não sabe nada disto. A separação é o que permite à varredura e à carga
+ * tratarem "sem cartão" como um código de erro em vez de uma consulta a
+ * hardware.
  *
  * O vocabulário vem do CONTEXT.md: o cartão tem **três** estados que pedem
  * tratamento distinto, e não dois. "Ausente" e "presente mas ilegível" pedem

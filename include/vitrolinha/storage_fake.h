@@ -5,8 +5,8 @@
  * A implementação de mentira devolve duas faixas embutidas no binário. Ela
  * existe por dois motivos:
  *
- * 1. Destravar as trilhas A e B antes de o cartão existir: dá para tocar e
- *    desenhar a biblioteca sem cartão nenhum na placa.
+ * 1. Dar aos testes uma biblioteca sem cartão nem sistema de arquivos: dá
+ *    para tocar e desenhar a biblioteca sem disco nenhum.
  * 2. Tornar testáveis os caminhos de falha do contrato. "Sem cartão" e
  *    "falha de leitura" não se reproduzem com hardware de verdade sem alguém
  *    puxar o cartão na hora certa.

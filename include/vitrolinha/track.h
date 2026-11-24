@@ -2,8 +2,7 @@
  * @file track.h
  * @brief Contrato: metadados de uma faixa da biblioteca.
  *
- * Cabeçalho compartilhado pelas três trilhas de desenvolvimento. É o
- * vocabulário comum entre quem varre o cartão (`storage`), quem desenha a
+ * O vocabulário comum entre quem varre o cartão (`storage`), quem desenha a
  * lista (`ui`) e quem toca (`player`).
  *
  * O consumo de RAM da biblioteca é fixo por construção: LIBRARY_MAX faixas de
@@ -37,7 +36,7 @@ extern "C" {
  * @brief Número máximo de faixas na biblioteca.
  *
  * Arquivos além do 32.º são ignorados com aviso na tela. O teto é o que
- * mantém o consumo de RAM e o custo de heap do `lv_list` fixos.
+ * mantém fixo o consumo de RAM das cópias da lista.
  */
 #define LIBRARY_MAX 32U
 
@@ -54,9 +53,10 @@ struct track_meta {
 	/**
 	 * @brief Nome exibido, sempre terminado em NUL.
 	 *
-	 * No cartão, é o nome 8.3 do arquivo sem a extensão (`FURELISE.CSV`
-	 * vira `FURELISE`): o CSV não tem campo de nome, e sem
-	 * `CONFIG_FS_FATFS_LFN` o diretório só entrega 8.3 em maiúsculas.
+	 * No RTTTL, o nome do cabeçalho (@ref track_rtttl_name). No CSV, que
+	 * não tem campo de nome, o 8.3 do arquivo sem a extensão
+	 * (`FURELISE.CSV` vira `FURELISE`): sem `CONFIG_FS_FATFS_LFN` o
+	 * diretório só entrega 8.3 em maiúsculas.
 	 */
 	char name[TRACK_NAME_MAX];
 

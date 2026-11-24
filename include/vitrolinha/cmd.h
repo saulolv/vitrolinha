@@ -128,8 +128,8 @@ void cmd_poll_event_init(struct k_poll_event *event);
 /**
  * @brief Descarta todos os comandos pendentes.
  *
- * Usado ao trocar de faixa, para que botões apertados antes da troca não
- * ajam sobre a faixa nova, e no preparo de cada teste.
+ * O firmware não a chama: o player consome cada comando na ordem em que
+ * chega. Existe para que cada caso de teste comece com a fila vazia.
  */
 void cmd_flush(void);
 

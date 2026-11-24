@@ -11,8 +11,9 @@
  * O parser preserva as frequências e durações, sem transposição nem
  * articulação automática. Não faz E/S, alocação dinâmica ou acesso ao
  * relógio. Todo o arquivo é validado antes de disponibilizar eventos.
- * Frequências devem caber em uint32_t; a faixa suportada pelo buzzer será
- * verificada pela saída. A soma das durações não pode exceder 4294967 ms.
+ * Frequência diferente de zero fora de ::TONE_FREQ_MIN_HZ .. ::TONE_FREQ_MAX_HZ
+ * é recusada já na validação. A soma das durações não pode exceder
+ * 4294967 ms.
  */
 
 #ifndef VITROLINHA_PARSER_CSV_H_
