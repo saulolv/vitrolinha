@@ -4,7 +4,7 @@
  *
  * O player consome os comandos existentes em cmd.h e publica estado
  * por snapshot.h. Solicita faixas ao loader e aplica eventos por tone.h,
- * usando prazos absolutos. A máquina de estados e o timer serão internos.
+ * usando prazos absolutos. A máquina de estados e o timer são internos.
  *
  * Não há uma segunda API pública de tocar/pausar: os comandos já
  * definidos são a entrada de controle. Arquivos, parser e gráficos não

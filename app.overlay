@@ -3,9 +3,10 @@
  *
  * O que é específico de cada um mora em boards/: a ZBook P2 em
  * boards/zbook_rp2350b_m33_p2.overlay, o simulador em
- * boards/native_sim.overlay. Aqui fica só o que vale para os dois — hoje, a
- * ponte entre o subsistema `input` e o dispositivo de entrada do LVGL, que é
- * idêntica nos dois porque ambos entregam os mesmos códigos de evento.
+ * boards/native_sim_native_64.overlay. Aqui fica só o que vale para os dois
+ * — hoje, a ponte entre o subsistema `input` e o dispositivo de entrada do
+ * LVGL, que é idêntica nos dois porque ambos entregam os mesmos códigos de
+ * evento.
  *
  * Quem aplica este arquivo é o CMakeLists.txt da raiz, por
  * EXTRA_DTC_OVERLAY_FILE. Por padrão o Zephyr o ignoraria, porque os dois
@@ -28,7 +29,7 @@
 	 * comandos própria.
 	 *
 	 * Atenção: isto cria o indev, não o grupo de foco. Criar o grupo e
-	 * amarrá-lo ao indev é da aplicação (issue #25) — sem isso o encoder
+	 * amarrá-lo ao indev é da aplicação (src/display.c) — sem isso o encoder
 	 * gera eventos, o LVGL os recebe, e nada se move na tela.
 	 */
 	lvgl_encoder_input: lvgl_encoder_input {

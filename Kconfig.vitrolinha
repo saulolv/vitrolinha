@@ -22,8 +22,10 @@ config VITROLINHA_STORAGE_CARD
 	bool "Cartao microSD"
 	depends on FAT_FILESYSTEM_ELM
 	help
-	  Varre os .CSV da raiz do volume montado pelo módulo card; o nome
-	  de cada faixa é o do arquivo, sem a extensão. Ver src/storage.c.
+	  Varre as faixas da raiz do volume montado pelo módulo card: RTTTL
+	  em .TXT, .RTX e .RTT, e CSV em .CSV. O nome exibido do RTTTL sai
+	  do cabeçalho; o do CSV é o do arquivo, sem a extensão. Ver
+	  src/storage.c.
 
 config VITROLINHA_STORAGE_FAKE
 	bool "Faixas embutidas no binario (implementacao de mentira)"

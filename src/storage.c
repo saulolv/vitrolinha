@@ -28,6 +28,7 @@
  */
 
 #include <vitrolinha/card.h>
+#include <vitrolinha/parser_csv.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/track.h>
 
@@ -41,15 +42,6 @@
 
 LOG_MODULE_REGISTER(storage, LOG_LEVEL_INF);
 
-/**
- * @brief Primeira linha de toda faixa, sem o fim de linha.
- *
- * A mesma que o `parser_csv` exige, byte a byte: sem BOM, sem espaços, sem
- * maiúsculas. Conferir aqui com regra mais frouxa listaria como válida uma
- * faixa que a carga recusaria.
- */
-#define STORAGE_CSV_HEADER "frequency_hz,duration_ms"
-
 /** @brief Extensão do CSV, como o FatFs a entrega sem nomes longos. */
 #define STORAGE_CSV_EXTENSION ".CSV"
 
@@ -60,7 +52,7 @@ LOG_MODULE_REGISTER(storage, LOG_LEVEL_INF);
  * um editor do Windows deixa depois dele. Cabe num setor, então custa a
  * mesma leitura que um byte custaria.
  */
-#define STORAGE_HEADER_PEEK MAX(TRACK_RTTTL_PEEK, sizeof(STORAGE_CSV_HEADER) + 1U)
+#define STORAGE_HEADER_PEEK MAX(TRACK_RTTTL_PEEK, sizeof(PARSER_CSV_HEADER) + 1U)
 
 /**
  * @brief Tamanho de um nome 8.3 com terminador, como o `fs_readdir` o entrega.
@@ -155,9 +147,9 @@ static bool is_track_file(const struct fs_dirent *entry)
  */
 static bool has_csv_header(const uint8_t *buf, size_t len)
 {
-	const size_t header_len = sizeof(STORAGE_CSV_HEADER) - 1U;
+	const size_t header_len = sizeof(PARSER_CSV_HEADER) - 1U;
 
-	if ((len <= header_len) || (memcmp(buf, STORAGE_CSV_HEADER, header_len) != 0)) {
+	if ((len <= header_len) || (memcmp(buf, PARSER_CSV_HEADER, header_len) != 0)) {
 		return false;
 	}
 

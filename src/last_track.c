@@ -39,7 +39,13 @@ struct last_track_record {
 	char name[TRACK_NAME_MAX];
 };
 
-K_MUTEX_DEFINE(lt_lock);
+/* O registro é comparado com memcmp e gravado como está: byte de
+ * preenchimento mudaria a comparação e o formato na flash.
+ */
+BUILD_ASSERT(sizeof(struct last_track_record) == (1U + TRACK_NAME_MAX),
+	     "last_track_record tem preenchimento");
+
+static K_MUTEX_DEFINE(lt_lock);
 
 /** @brief Último registro na flash. Sob @ref lt_lock. */
 static struct last_track_record stored;

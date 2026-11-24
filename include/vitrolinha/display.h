@@ -35,9 +35,6 @@ extern "C" {
  */
 #define DISPLAY_ERROR_MS 2000
 
-/** @brief Período do quadro de demonstração: os 10 fps do plano. */
-#define DISPLAY_DEMO_PERIOD_MS 100
-
 /**
  * @brief Período de atualização da faixa e da barra de progresso.
  *

@@ -12,9 +12,9 @@
 /**
  * @brief A fila.
  *
- * Estática e privada. Nenhum módulo recebe a `k_msgq`: assim não há como
- * alguém enfileirar um comando malformado por baixo da validação, nem
- * bloquear na publicação passando um timeout.
+ * Privada: nenhum cabeçalho a declara, e nenhum módulo recebe a `k_msgq`.
+ * Não há como alguém enfileirar um comando malformado por baixo da
+ * validação, nem bloquear na publicação passando um timeout.
  *
  * Alinhamento 4 porque a estrutura tem um `int16_t` — a `k_msgq` copia por
  * blocos e exige o alinhamento natural do tipo.

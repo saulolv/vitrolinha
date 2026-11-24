@@ -27,7 +27,7 @@
 #
 # No Linux, basta executar build-out/zephyr-sim.elf direto.
 #
-# Rode da raiz do repositório: a biblioteca do simulador são os CSVs de
+# Rode da raiz do repositório: a biblioteca do simulador são as faixas de
 # fixtures/music, procurados relativamente ao diretório de execução. De outro
 # lugar, aponte VITROLINHA_MUSIC_DIR para a pasta.
 #

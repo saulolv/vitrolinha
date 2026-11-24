@@ -2,15 +2,15 @@
   "// leia-me": "Ramos que os testes comprovadamente nao conseguem exercitar no ambiente de execucao, com a razao de cada um. Lido por scripts/coverage_gate.py. Toda entrada aqui e uma lacuna assumida por escrito: se o ramo passar a ser coberto, o portao reprova ate a entrada ser removida.",
 
   "src/loader.c": {
-    "134": "Ramo id != active_id no topo do laco de reposicao. So e tomado se um pedido novo chegar enquanto o worker esta dentro do laco, isto e, se uma thread de prioridade maior preemptar o worker entre duas iteracoes. Em native_sim o tempo nao avanca durante a execucao e o laco nao chama a libc, entao nada preempta o worker ali. A substituicao no meio da leitura do arquivo, que tem o mesmo efeito antes do laco, e coberta em tests/playback (test_loader_pedido_substituido_durante_a_leitura).",
-    "155": "Ramo id != active_id depois de parser_csv_next, pela mesma razao da linha 134: exige que o worker seja preemptado entre a interpretacao do evento e o lock, o que nao acontece em native_sim.",
-    "156": "Ramo status != 1 de parser_csv_next. parser_csv_init valida o buffer inteiro, que e imutavel ate o proximo pedido, entao a iteracao depois dele so devolve evento; 0 nao ocorre porque o laco para antes, em finished. A defesa encerra a fila sem o silencio final, que o player trata como falha (coberto em tests/playback, test_player_falhas_e_comandos_fora_de_hora).",
-    "159": "Mesmo ramo da linha 155, na atribuicao de finished: status != 1 nunca e verdadeiro depois de um parser_csv_init bem-sucedido."
+    "141": "Ramo id != active_id no topo do laco de reposicao. So e tomado se um pedido novo chegar enquanto o worker esta dentro do laco, isto e, se uma thread de prioridade maior preemptar o worker entre duas iteracoes. Em native_sim o tempo nao avanca durante a execucao e o laco nao chama a libc, entao nada preempta o worker ali. A substituicao no meio da leitura do arquivo, que tem o mesmo efeito antes do laco, e coberta em tests/playback (test_loader_pedido_substituido_durante_a_leitura).",
+    "162": "Ramo id != active_id depois de parser_next, pela mesma razao da linha 141: exige que o worker seja preemptado entre a interpretacao do evento e o lock, o que nao acontece em native_sim.",
+    "163": "Ramo status != 1 de parser_next. parser_init valida o buffer inteiro, que e imutavel ate o proximo pedido, entao a iteracao depois dele so devolve evento; 0 nao ocorre porque o laco para antes, em finished. A defesa encerra a fila sem o silencio final, que o player trata como falha (coberto em tests/playback, test_player_falhas_e_comandos_fora_de_hora).",
+    "166": "Mesmo ramo da linha 162, na atribuicao de finished: status != 1 nunca e verdadeiro depois de um parser_init bem-sucedido."
   },
 
   "src/player.c": {
     "84": "Ramo interno do macro K_TIMEOUT_ABS_TICKS, que faz CLAMP(t, 0, INT64_MAX - 1). O prazo e base_us + offset_us em ticks, sempre positivo e muito abaixo de INT64_MAX, entao os ramos de saturacao do CLAMP nao sao do codigo do player e nunca sao tomados.",
-    "96": "Ramos current.offset_us != total_us e current.freq_hz != 0 com status == 0. loader_next_event so devolve 0 depois de entregar o ultimo evento do parser, que e sempre o silencio em total_us; as duas condicoes sao defesa contra uma fila encerrada antes dele, que o parser validado nao produz (ver src/loader.c, linha 156). A fila que para de entregar antes do fim, por -ESTALE, e coberta pelo ramo seguinte.",
+    "96": "Ramos current.offset_us != total_us e current.freq_hz != 0 com status == 0. loader_next_event so devolve 0 depois de entregar o ultimo evento do parser, que e sempre o silencio em total_us; as duas condicoes sao defesa contra uma fila encerrada antes dele, que o parser validado nao produz (ver src/loader.c, linha 163). A fila que para de entregar antes do fim, por -ESTALE, e coberta pelo ramo seguinte.",
     "118": "Ramo state != PLAYER_PLAYING no callback do timer. Todo caminho que tira o player de PLAYING para o timer sob o mesmo spinlock do callback, e num nucleo so o spinlock mascara a interrupcao: ou o callback rodou antes, ou o k_timer_stop removeu o prazo e ele nao roda mais. A guarda so teria efeito com mais de um nucleo.",
     "163": "Saida do switch sem nenhum case. cmd_post recusa tipo desconhecido com -EINVAL, e a fila de comandos e privada de cmd.c, entao o player so recebe os seis comandos tratados.",
     "256": "Ramo loader_next_event != 1 depois de um resultado pronto e sem erro. O loader so marca pronto um resultado bem-sucedido quando a fila esta cheia ou ja contem o silencio final, entao ha sempre ao menos um evento. A defesa trata o caso como carga recusada.",
@@ -18,7 +18,7 @@
   },
 
   "src/last_track.c": {
-    "92": "Ramo err != 0 de settings_subsys_init. No native_sim o backend e o NVS sobre a flash simulada, que sempre inicializa; nao ha como fazer o subsistema falhar sem trocar a flash por baixo do teste. A falha, se acontecer na placa, so impede a leitura: o main registra o erro e a restauracao responde que nada foi gravado."
+    "98": "Ramo err != 0 de settings_subsys_init. No native_sim o backend e o NVS sobre a flash simulada, que sempre inicializa; nao ha como fazer o subsistema falhar sem trocar a flash por baixo do teste. A falha, se acontecer na placa, so impede a leitura: o main registra o erro e a restauracao responde que nada foi gravado."
   },
 
   "src/snapshot.c": {

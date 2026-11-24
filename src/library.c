@@ -54,7 +54,7 @@ static size_t lib_skipped;
  * @brief Cópia de trabalho da varredura. Só é tocada sob @ref io_lock.
  *
  * Existe para que a `ui` não espere uma varredura: o cartão é lido para cá,
- * fora de @ref pub_lock, e a publicação é uma cópia de memória. São 896 B
+ * fora de @ref pub_lock, e a publicação é uma cópia de memória. São 832 B
  * fixos (RNF06) que compram uma tela que não congela num cartão lento.
  */
 static struct track_meta scan_tracks[LIBRARY_MAX];

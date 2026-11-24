@@ -2,8 +2,6 @@
  * @file tone_pwm.c
  * @brief O @ref tone.h servido pelo buzzer da ZBook, por PWM.
  *
- * Vem do `tone_pwm.c` do branch `final-version`.
- *
  * Duas regras do projeto moram aqui.
  *
  * **O período sai de `pwm_get_cycles_per_sec()`**, nunca de constante, e a

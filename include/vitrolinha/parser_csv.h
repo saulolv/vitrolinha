@@ -11,8 +11,9 @@
  * O parser preserva as frequências e durações, sem transposição nem
  * articulação automática. Não faz E/S, alocação dinâmica ou acesso ao
  * relógio. Todo o arquivo é validado antes de disponibilizar eventos.
- * Frequências devem caber em uint32_t; a faixa suportada pelo buzzer será
- * verificada pela saída. A soma das durações não pode exceder 4294967 ms.
+ * Frequência diferente de zero fora de ::TONE_FREQ_MIN_HZ .. ::TONE_FREQ_MAX_HZ
+ * é recusada já na validação. A soma das durações não pode exceder
+ * 4294967 ms.
  */
 
 #ifndef VITROLINHA_PARSER_CSV_H_
@@ -27,6 +28,15 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @brief A primeira linha de todo CSV de faixa, sem o fim de linha.
+ *
+ * Uma constante só para o parser, a fachada que reconhece o formato e a
+ * varredura do cartão: conferir o cabeçalho com regra mais frouxa em um deles
+ * listaria como válida uma faixa que a carga recusaria.
+ */
+#define PARSER_CSV_HEADER "frequency_hz,duration_ms"
 
 /** @brief Localização de um erro de validação. */
 struct parser_csv_error {

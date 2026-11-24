@@ -557,7 +557,6 @@ void display_cue(int track)
 /* Reprodução                                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** @brief Só reescreve o rótulo quando o texto muda, para não redesenhar à toa. */
 /**
  * @brief Cria um rótulo cujo texto @ref label_set compara antes de reescrever.
  *
@@ -856,9 +855,8 @@ static lv_obj_t *screen_create(void)
 /**
  * @brief Barra de progresso no visual das duas telas.
  *
- * O do tema mono, com as pontas arredondadas e 90% da largura. Um contorno
- * quadrado na largura toda foi tentado no mini-player e ficou pesado no
- * OLED; esta é a barra que já estava em uso, agora a mesma nos dois lugares.
+ * O do tema mono, com as pontas arredondadas e 90% da largura, a mesma nas
+ * duas telas. Um contorno quadrado na largura toda ficou pesado no OLED.
  */
 static lv_obj_t *progress_bar_create(lv_obj_t *parent, int32_t height)
 {
@@ -1127,6 +1125,9 @@ static void ui_build(void)
 /* -------------------------------------------------------------------------- */
 
 #ifdef TEST_FPS
+
+/** @brief Período do quadro de demonstração: os 10 fps do plano. */
+#define DISPLAY_DEMO_PERIOD_MS 100
 
 static lv_obj_t *frame_label;
 static uint32_t frame_counter;

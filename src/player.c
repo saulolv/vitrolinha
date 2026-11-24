@@ -3,7 +3,7 @@
  * @brief Transporte por comandos e aplicação de eventos em prazos absolutos.
  *
  * O lock serializa a thread e o timer. Nenhum deles lê arquivos ou interpreta
- * CSV. A thread só acorda por evento: comando na fila ou, durante a carga,
+ * a faixa. A thread só acorda por evento: comando na fila ou, durante a carga,
  * resultado pronto no loader.
  *
  * A biblioteca chega só por leituras atômicas de library.h: o player nunca
