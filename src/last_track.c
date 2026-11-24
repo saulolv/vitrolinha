@@ -69,6 +69,15 @@ static atomic_t loaded;
 static int16_t seen_track = TRACK_NONE;
 static int64_t seen_since;
 
+/**
+ * @brief Nome da faixa quando ela foi vista pela primeira vez.
+ *
+ * O instantâneo só traz o índice, e o índice muda de dono quando o cartão é
+ * trocado: sem o nome, a faixa pausada do cartão anterior seria gravada com o
+ * nome da que ocupa a mesma posição no novo.
+ */
+static char seen_name[TRACK_NAME_MAX];
+
 static int handle_set(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg)
 {
 	struct last_track_record rec = {0};
@@ -138,43 +147,61 @@ int last_track_restore(void)
 int last_track_poll(int64_t now_ms)
 {
 	struct player_snapshot snap;
+	struct last_track_record rec = {0};
 	int err;
 
-	/* Sem preempção do início ao fim: entre ver o player parado e gravar,
-	 * ele não pode voltar a tocar. Com as interrupções travadas pelo driver
-	 * de flash, nenhuma nota pode estar agendada.
+	/* O que pode bloquear vem antes de travar o escalonador: a trava do
+	 * módulo e a da lista publicada. Uma thread que bloqueia sob
+	 * k_sched_lock deixa as outras rodarem, e o player poderia voltar a
+	 * tocar entre a conferência e a gravação.
+	 */
+	k_mutex_lock(&lt_lock, K_FOREVER);
+	int count = library_copy(tracks, ARRAY_SIZE(tracks), NULL);
+
+	/* Daqui até gravar, sem preempção e sem nada que bloqueie: entre ver
+	 * o player parado e gravar, ele não pode voltar a tocar. Com as
+	 * interrupções travadas pelo driver de flash, nenhuma nota pode estar
+	 * agendada. O settings e o NVS só são usados por esta thread depois do
+	 * boot, então as travas deles nunca estão ocupadas aqui.
 	 */
 	k_sched_lock();
 	snapshot_read(&snap);
+	bool listed = (snap.track >= 0) && (snap.track < count);
+
 	if (snap.track != seen_track) {
 		seen_track = snap.track;
 		seen_since = now_ms;
+		if (listed) {
+			memcpy(seen_name, tracks[snap.track].name, sizeof(seen_name));
+		} else {
+			seen_name[0] = '\0';
+		}
 		err = -EAGAIN;
 	} else if ((snap.track == TRACK_NONE) || (now_ms - seen_since < LAST_TRACK_DEBOUNCE_MS)) {
 		err = -EAGAIN;
+	} else if (!listed) {
+		err = -ENOENT;
+	} else if (strcmp(tracks[snap.track].name, seen_name) != 0) {
+		/* O cartão foi trocado com a faixa parada: o índice agora é de
+		 * outra música, que ninguém escolheu.
+		 */
+		err = -ESTALE;
 	} else if (snap.state == PLAYER_PLAYING) {
 		err = -EBUSY;
 	} else {
-		k_mutex_lock(&lt_lock, K_FOREVER);
-		int count = library_copy(tracks, ARRAY_SIZE(tracks), NULL);
-		struct last_track_record rec = {.index = (uint8_t)snap.track};
-
-		if (snap.track >= count) {
-			err = -ENOENT;
-		} else {
-			memcpy(rec.name, tracks[snap.track].name, sizeof(rec.name));
-			err = 0;
-			if (!stored_valid || (memcmp(&rec, &stored, sizeof(rec)) != 0)) {
-				err = settings_save_one(LAST_TRACK_KEY, &rec, sizeof(rec));
-				/* Falhou, fica inválido e a próxima passada tenta de novo. */
-				stored = rec;
-				stored_valid = (err == 0);
-				LOG_INF("Ultima faixa gravada: %d %s (%d)", rec.index, rec.name, err);
-			}
+		rec.index = (uint8_t)snap.track;
+		memcpy(rec.name, tracks[snap.track].name, sizeof(rec.name));
+		err = 0;
+		if (!stored_valid || (memcmp(&rec, &stored, sizeof(rec)) != 0)) {
+			err = settings_save_one(LAST_TRACK_KEY, &rec, sizeof(rec));
+			/* Falhou, fica inválido e a próxima passada tenta de novo. */
+			stored = rec;
+			stored_valid = (err == 0);
+			LOG_INF("Ultima faixa gravada: %d %s (%d)", rec.index, rec.name, err);
 		}
-		k_mutex_unlock(&lt_lock);
 	}
 	k_sched_unlock();
+	k_mutex_unlock(&lt_lock);
 	return err;
 }
 
@@ -207,4 +234,5 @@ void last_track_reset(void)
 	(void)atomic_set(&loaded, 0);
 	seen_track = TRACK_NONE;
 	seen_since = 0;
+	seen_name[0] = '\0';
 }

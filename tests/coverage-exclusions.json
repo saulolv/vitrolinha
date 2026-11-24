@@ -18,7 +18,7 @@
   },
 
   "src/last_track.c": {
-    "98": "Ramo err != 0 de settings_subsys_init. No native_sim o backend e o NVS sobre a flash simulada, que sempre inicializa; nao ha como fazer o subsistema falhar sem trocar a flash por baixo do teste. A falha, se acontecer na placa, so impede a leitura: o main registra o erro e a restauracao responde que nada foi gravado."
+    "107": "Ramo err != 0 de settings_subsys_init. No native_sim o backend e o NVS sobre a flash simulada, que sempre inicializa; nao ha como fazer o subsistema falhar sem trocar a flash por baixo do teste. A falha, se acontecer na placa, so impede a leitura: o main registra o erro e a restauracao responde que nada foi gravado."
   },
 
   "src/snapshot.c": {
