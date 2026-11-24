@@ -121,21 +121,26 @@
 			label = "Encoder horario (seta direita)";
 		};
 	};
-    lvgl_keypad: lvgl_keypad {
-        compatible = "zephyr,lvgl-keypad-input";
 
-        input = <&encoder>;
+	/*
+	 * As setas e o Enter chegam ao LVGL como teclado. Quando este nó
+	 * existe, src/display.c o usa no lugar do `lvgl_encoder_input`.
+	 */
+	lvgl_keypad: lvgl_keypad {
+		compatible = "zephyr,lvgl-keypad-input";
 
-        input-codes = <
-            INPUT_KEY_LEFT
-            INPUT_KEY_RIGHT
-            INPUT_KEY_ENTER
-        >;
+		input = <&encoder>;
 
-        lvgl-codes = <
-            LV_KEY_LEFT
-            LV_KEY_RIGHT
-            LV_KEY_ENTER
-        >;
-    };
+		input-codes = <
+			INPUT_KEY_LEFT
+			INPUT_KEY_RIGHT
+			INPUT_KEY_ENTER
+		>;
+
+		lvgl-codes = <
+			LV_KEY_LEFT
+			LV_KEY_RIGHT
+			LV_KEY_ENTER
+		>;
+	};
 };

@@ -29,7 +29,7 @@
 	 * comandos própria.
 	 *
 	 * Atenção: isto cria o indev, não o grupo de foco. Criar o grupo e
-	 * amarrá-lo ao indev é da aplicação (issue #25) — sem isso o encoder
+	 * amarrá-lo ao indev é da aplicação (src/display.c) — sem isso o encoder
 	 * gera eventos, o LVGL os recebe, e nada se move na tela.
 	 */
 	lvgl_encoder_input: lvgl_encoder_input {
