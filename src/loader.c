@@ -31,8 +31,15 @@
  */
 #define LOADER_PRIORITY 8
 
-K_MSGQ_DEFINE(events, sizeof(struct playback_event), 32, 4);
-K_SEM_DEFINE(work, 0, 1);
+/**
+ * @brief Eventos prontos à frente do callback do timer: 16 notas, 256 B.
+ *
+ * Cada nota gera dois eventos, o tom e o silêncio de articulação.
+ */
+#define LOADER_QUEUE_DEPTH 32
+
+K_MSGQ_DEFINE(loader_events, sizeof(struct playback_event), LOADER_QUEUE_DEPTH, 4);
+static K_SEM_DEFINE(loader_work, 0, 1);
 /** @brief Levantado quando o resultado da geração corrente fica pronto. */
 static struct k_poll_signal ready_signal = K_POLL_SIGNAL_INITIALIZER(ready_signal);
 static struct k_spinlock lock;
@@ -54,7 +61,7 @@ static uint32_t new_generation(void)
 	active_id = generation;
 	ready = false;
 	finished = false;
-	k_msgq_purge(&events);
+	k_msgq_purge(&loader_events);
 	return active_id;
 }
 
@@ -75,7 +82,7 @@ static void loader_worker(void *a, void *b, void *c)
 	ARG_UNUSED(b);
 	ARG_UNUSED(c);
 	for (;;) {
-		k_sem_take(&work, K_FOREVER);
+		k_sem_take(&loader_work, K_FOREVER);
 		k_spinlock_key_t key = k_spin_lock(&lock);
 		uint32_t id = active_id;
 		int track = selected_track;
@@ -96,9 +103,9 @@ static void loader_worker(void *a, void *b, void *c)
 				/* Pela biblioteca, e não direto do storage: é ela que
 				 * decide se o erro é do arquivo ou do cartão (ADR 0010).
 				 */
-				uint32_t generation;
+				uint32_t list_generation;
 				int size = library_load(track, buffer, sizeof(buffer),
-							&generation);
+							&list_generation);
 
 				status = size < 0 ? size :
 					parser_init(&parser, buffer, size, &error);
@@ -107,7 +114,7 @@ static void loader_worker(void *a, void *b, void *c)
 					 * seguinte/anterior. -ESTALE é uma varredura no
 					 * meio, e aí a marca não vale para a lista nova.
 					 */
-					(void)library_reject(track, generation);
+					(void)library_reject(track, list_generation);
 				}
 			}
 			key = k_spin_lock(&lock);
@@ -135,7 +142,7 @@ static void loader_worker(void *a, void *b, void *c)
 				k_spin_unlock(&lock, key);
 				break;
 			}
-			if (finished || k_msgq_num_free_get(&events) == 0) {
+			if (finished || k_msgq_num_free_get(&loader_events) == 0) {
 				mark_ready();
 				k_spin_unlock(&lock, key);
 				break;
@@ -154,7 +161,7 @@ static void loader_worker(void *a, void *b, void *c)
 			key = k_spin_lock(&lock);
 			if (id == active_id) {
 				if (status == 1) {
-					(void)k_msgq_put(&events, &event, K_NO_WAIT);
+					(void)k_msgq_put(&loader_events, &event, K_NO_WAIT);
 				}
 				finished = status != 1 || parser_finished(&parser);
 			}
@@ -183,7 +190,7 @@ int loader_request(int track, uint32_t *request_id)
 	restart = false;
 	*request_id = new_generation();
 	k_spin_unlock(&lock, key);
-	k_sem_give(&work);
+	k_sem_give(&loader_work);
 	return 0;
 }
 
@@ -224,7 +231,7 @@ int loader_next_event(uint32_t request_id, struct playback_event *out)
 		status = -ESTALE;
 	} else if (!ready || result.status != 0) {
 		status = -EAGAIN;
-	} else if (k_msgq_get(&events, out, K_NO_WAIT) == 0) {
+	} else if (k_msgq_get(&loader_events, out, K_NO_WAIT) == 0) {
 		status = 1;
 	} else {
 		status = finished ? 0 : -EAGAIN;
@@ -233,7 +240,7 @@ int loader_next_event(uint32_t request_id, struct playback_event *out)
 
 	k_spin_unlock(&lock, key);
 	if (refill) {
-		k_sem_give(&work);
+		k_sem_give(&loader_work);
 	}
 	return status;
 }
@@ -252,7 +259,7 @@ int loader_restart(uint32_t request_id, uint32_t *new_request_id)
 	restart = true;
 	*new_request_id = new_generation();
 	k_spin_unlock(&lock, key);
-	k_sem_give(&work);
+	k_sem_give(&loader_work);
 	return 0;
 }
 
@@ -266,7 +273,7 @@ int loader_cancel(uint32_t request_id)
 	}
 	active_id = 0;
 	ready = false;
-	k_msgq_purge(&events);
+	k_msgq_purge(&loader_events);
 	k_spin_unlock(&lock, key);
 	return 0;
 }
