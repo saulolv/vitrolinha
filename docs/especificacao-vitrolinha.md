@@ -334,9 +334,9 @@ Ao fim de uma faixa o player para e permanece na tela de reprodução, com o
 progresso completo; o botão de tocar reinicia do começo. Esse comportamento
 reduz o RF09, avanço automático, a uma substituição de uma linha.
 
-Os botões da revisão P2 não têm serigrafia, e sua ordem física não corresponde à
-ordem numérica dos aliases. O mapeamento acima é por posição física, e a
-identificação é tarefa da etapa E1.
+Os botões da revisão P2 não têm serigrafia. A bancada da etapa E1 identificou a
+ordem física: da esquerda para a direita, os botões 1 a 4 seguem a ordem numérica
+dos aliases, e o mapeamento acima é por posição física.
 
 ---
 
