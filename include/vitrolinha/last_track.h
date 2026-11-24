@@ -86,6 +86,9 @@ int last_track_restore(void);
  * @retval -EAGAIN Sem faixa, ou faixa nova, ainda no debounce.
  * @retval -EBUSY  Tocando: gravar agora atrasaria a próxima nota.
  * @retval -ENOENT A faixa não está na biblioteca publicada.
+ * @retval -ESTALE O cartão foi trocado desde que a faixa foi escolhida: o
+ *                 índice agora é de outra música. Não grava até a faixa
+ *                 mudar.
  * @retval outro   Erro de `settings_save_one`; tenta de novo na próxima.
  */
 int last_track_poll(int64_t now_ms);

@@ -220,6 +220,28 @@ ZTEST(last_track, test_faixa_fora_da_lista_nao_grava)
 	zassert_equal(-ENOENT, last_track_poll(LAST_TRACK_DEBOUNCE_MS));
 }
 
+ZTEST(last_track, test_cartao_trocado_com_a_faixa_parada_nao_grava_outra)
+{
+	/* A "c" pausada no cartão a-b-c, já vista pela thread. */
+	publish(PLAYER_PAUSED, 2);
+	zassert_equal(-EAGAIN, last_track_poll(0));
+
+	/* Outro cartão: o índice 2 agora é a "Teste", que ninguém escolheu. */
+	use_dir(2, 4);
+	zassert_equal(-ESTALE, last_track_poll(LAST_TRACK_DEBOUNCE_MS));
+	reboot();
+	zassert_equal(-ENOENT, last_track_restore());
+
+	/* Sai e volta o mesmo cartão: a "c" continua a "c", e grava. */
+	use_dir(0, 3);
+	zassert_equal(-EAGAIN, last_track_poll(0));
+	use_dir(2, 4);
+	use_dir(0, 3);
+	zassert_ok(last_track_poll(LAST_TRACK_DEBOUNCE_MS));
+	reboot();
+	zassert_equal(2, last_track_restore());
+}
+
 ZTEST(last_track, test_registro_malformado_e_ignorado)
 {
 	const char shorter[] = "xy";
