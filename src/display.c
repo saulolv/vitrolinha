@@ -1126,6 +1126,9 @@ static void ui_build(void)
 
 #ifdef TEST_FPS
 
+/** @brief Período do quadro de demonstração: os 10 fps do plano. */
+#define DISPLAY_DEMO_PERIOD_MS 100
+
 static lv_obj_t *frame_label;
 static uint32_t frame_counter;
 static uint32_t fps_frame_count;
