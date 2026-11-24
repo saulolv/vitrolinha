@@ -26,6 +26,8 @@
 
 #include <ff.h>
 
+#include "priorities.h"
+
 #include <errno.h>
 
 LOG_MODULE_REGISTER(card, LOG_LEVEL_INF);
@@ -52,14 +54,13 @@ LOG_MODULE_REGISTER(card, LOG_LEVEL_INF);
  */
 #define CARD_MONITOR_STACK_SIZE 2048
 
-/**
- * @brief Prioridade do monitor: a mais baixa do sistema.
- *
- * Abaixo da fila de trabalho do LVGL (10), que já está abaixo do `player`.
- * O monitor é a única thread que bloqueia por mais de um milissegundo, e não
- * há nada no sistema que possa esperar por ela.
+/*
+ * Prioridade: ::PRIORITY_CARD_MONITOR, abaixo da fila de trabalho do LVGL e
+ * dos LEDs, que já estão abaixo do `player` (src/priorities.h). O monitor é a
+ * única thread que bloqueia por mais de um milissegundo, e não há nada no
+ * sistema que possa esperar por ela — só a gravação da última faixa, que
+ * nunca tem pressa, fica abaixo dele.
  */
-#define CARD_MONITOR_PRIORITY 12
 
 /** @brief Objeto de trabalho do FatFs para o volume do cartão. */
 static FATFS card_fat;
@@ -335,7 +336,7 @@ int card_init(void)
 
 	(void)k_thread_create(&card_monitor_thread, card_monitor_stack,
 			      K_THREAD_STACK_SIZEOF(card_monitor_stack), card_monitor, NULL,
-			      NULL, NULL, CARD_MONITOR_PRIORITY, 0, K_NO_WAIT);
+			      NULL, NULL, PRIORITY_CARD_MONITOR, 0, K_NO_WAIT);
 	(void)k_thread_name_set(&card_monitor_thread, "card");
 
 	return 0;

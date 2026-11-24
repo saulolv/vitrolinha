@@ -418,13 +418,18 @@ cartão possa atrasar a próxima nota.
 | Thread | Prioridade | Papel |
 |---|---|---|
 | callback do `k_timer` | interrupção | **Dispara cada evento.** Ajusta o tom, reagenda, atualiza o instantâneo |
-| `player` | Alta | Máquina de estados. Acordado por comando, fila baixa ou fim de faixa. Nunca faz E/S de cartão, nem I²C, nem gráficos |
+| `player` | Alta (4) | Máquina de estados. Acordado por comando, fila baixa ou fim de faixa. Nunca faz E/S de cartão, nem I²C, nem gráficos |
 | `input` | Média-alta | Traduz eventos em comandos e publica em fila |
-| `ui` | Baixa | Laço do LVGL em intervalo fixo, redesenho por região suja |
-| `loader` | Baixa | Lê o arquivo para o buffer, interpreta e preenche a fila de eventos |
+| `loader` | Baixa (8) | Lê o arquivo para o buffer, interpreta e preenche a fila de eventos |
+| `ui` | Baixa (10) | Laço do LVGL em intervalo fixo, redesenho por região suja |
 | `status_led` | Baixa (11) | Lê o instantâneo a 10 Hz e pinta os WS2812 quando a cor muda |
 | `card` | Baixa (12) | Sonda o soquete a cada 250 ms, monta e desmonta. É a única que bloqueia por mais de um milissegundo |
 | `last_track` | A mais baixa (13) | Grava a última faixa na flash, com debounce e só com o player fora de tocando |
+
+Os números moram em **`src/priorities.h`**, e só lá: cada módulo usa a
+constante de lá, e `BUILD_ASSERT`s travam a ordem da tabela. O do LVGL é
+`CONFIG_LV_Z_LVGL_WORKQUEUE_PRIORITY`, no `prj.conf`; o cabeçalho o espelha e
+reprova o build se os dois divergirem.
 
 O `loader` interpreta **do buffer em RAM**, não do cartão.
 

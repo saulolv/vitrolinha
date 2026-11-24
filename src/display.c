@@ -47,6 +47,11 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 
+/* Daqui sai a conferência de que CONFIG_LV_Z_LVGL_WORKQUEUE_PRIORITY ficou
+ * onde a ordem das threads a espera.
+ */
+#include "priorities.h"
+
 LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
 
 /**
