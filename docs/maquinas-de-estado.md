@@ -31,7 +31,8 @@ stateDiagram-v2
     Carregando --> Carregando: selecionar · seguinte · anterior<br/>(substitui o pedido)
     Tocando --> Pausado: tocar/pausar<br/>silencia, guarda o decorrido
     Pausado --> Tocando: tocar/pausar<br/>a nota corrente recomeça
-    Tocando --> Parado: silêncio final<br/>(progresso em 100%)
+    Tocando --> Carregando: silêncio final<br/>(avança para a seguinte)
+    Tocando --> Parado: silêncio final, sem seguinte<br/>(progresso em 100%)
     Tocando --> Parado: saída ou fila falhou antes do fim
     Tocando --> Carregando: selecionar · seguinte · anterior
     Pausado --> Carregando: selecionar · seguinte · anterior
@@ -46,22 +47,31 @@ stateDiagram-v2
 | carregando | tocar/pausar | carregando | ignorado: não há o que pausar |
 | tocando | tocar/pausar | pausado | silencia; `base_us` passa a guardar o decorrido |
 | pausado | tocar/pausar | tocando | `base_us = agora − início da nota corrente`: a nota recomeça inteira, e um único ajuste conserta o agendamento e o tempo exibido |
-| tocando | callback entrega o silêncio final | parado | `base_us = total_us`: a barra fica em 100% |
+| tocando | callback entrega o silêncio final, e há uma seguinte tocável depois desta | carregando | o callback publica parado em 100% e só sinaliza; a thread `player` acorda e pede a vizinha seguinte, pulando as marcadas com `!` (RF09) |
+| tocando | callback entrega o silêncio final, sem seguinte | parado | `base_us = total_us`: a barra fica em 100%. Sem seguinte é a última faixa válida (o avanço não dá a volta), uma única faixa válida, ou o cartão fora |
 | tocando | saída recusou um tom, ou a fila esvaziou antes do fim | parado | no ponto em que parou; não é erro do arquivo |
 | parado | tocar/pausar, com a faixa ainda retida no `loader` | carregando | reinterpreta do buffer em RAM, sem tocar no cartão — funciona com o cartão fora |
 | parado | tocar/pausar, sem faixa retida e com a biblioteca pronta | carregando | a faixa do instantâneo, ou a primeira tocável |
 | qualquer | parar (`CMD_STOP`) | parado | cancela a carga em curso; nenhum controle o envia hoje |
+| parado, sem faixa | indicar (`CMD_CUE`) | parado | põe a faixa no instantâneo sem tocar: é como a última faixa lembrada volta no boot (RF10); com faixa já escolhida, é ignorado |
 
 **Quem dispara as notas não é a thread.** No estado tocando, cada evento é
 aplicado pelo callback do `k_timer`, em interrupção: ajusta o tom, tira o
 próximo evento da fila e se reagenda para o instante absoluto
-`base_us + offset_us`. A thread `player` só acorda por comando ou por
-resultado de carga. O callback e a thread se serializam por um spinlock, e é
+`base_us + offset_us`. A thread `player` só acorda por comando, por
+resultado de carga ou pelo sinal de fim de faixa. O callback e a thread se serializam por um spinlock, e é
 por isso que, no callback, o estado nunca é outro que não tocando.
 
-**Fim de faixa.** O player para e fica na tela de reprodução, em 100%. O
-avanço automático (RF09) seria trocar, nessa transição, "parado" por
-"carregar a vizinha seguinte".
+**Fim de faixa.** Com o avanço automático (RF09,
+`CONFIG_VITROLINHA_AUTO_ADVANCE`, ligado por padrão), o player carrega a
+seguinte sozinho. Quem vê o fim é o callback, que não pode carregar arquivo:
+ele publica parado em 100% e levanta um sinal, e a thread `player` faz o
+equivalente a um "seguinte". Um comando do usuário na mesma volta vence o
+avanço. O avanço não dá a volta: depois da última faixa válida, com uma única
+faixa válida, ou com o cartão fora, o player para em 100% e fica na tela de
+reprodução, e o botão de tocar reinicia a faixa. Uma seguinte que o parser
+recusa para o avanço nela, com o motivo na tela e o `!`. Com a opção
+desligada, o fim de faixa sempre para.
 
 ## 2. Biblioteca e cartão
 
