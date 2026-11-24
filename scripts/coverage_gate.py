@@ -63,6 +63,12 @@ UNMEASURED_SOURCES = {
     "src/main.c": "Ponto de entrada: amarra os módulos e entra em laço "
                   "infinito. Compilá-lo nos testes traria um segundo main(), "
                   "que colidiria com o do ztest.",
+    "src/display_fps_test.c": "Demonstração de bancada que mede a taxa de "
+                              "flushes do OLED no lugar da interface. Só "
+                              "entra com CONFIG_VITROLINHA_DISPLAY_FPS_TEST, "
+                              "desligado nos testes e no firmware; o que se "
+                              "mede é o barramento da placa, que o native_sim "
+                              "não tem.",
 }
 
 

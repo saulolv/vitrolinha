@@ -14,7 +14,7 @@
  * código, para conferir.
  *
  * O botão ::DISPLAY_TOGGLE_BUTTON também passa por aqui, mas não é
- * transporte: alterna as telas, e quem o atende é o `display.c`. Este
+ * transporte: alterna as telas, e quem o atende é o `display_ui.c`. Este
  * módulo só o registra no console.
  *
  * Não há botão de reiniciar: no fim da faixa, tocar/pausar já recomeça do
@@ -39,7 +39,7 @@ static const enum cmd_kind button_map[] = {
 	CMD_PREV,       /* INPUT_BTN_0, botão 1: anterior */
 	CMD_PLAY_PAUSE, /* INPUT_BTN_1, botão 2: tocar/pausar */
 	CMD_NEXT,       /* INPUT_BTN_2, botão 3: seguinte */
-	BUTTON_NO_CMD,  /* INPUT_BTN_3, botão 4: alterna as telas, no display.c */
+	BUTTON_NO_CMD,  /* INPUT_BTN_3, botão 4: alterna as telas, no display_ui.c */
 };
 
 /* A linha sem comando da tabela tem de ser a do botão que o display atende;

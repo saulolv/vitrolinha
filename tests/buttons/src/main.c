@@ -70,7 +70,7 @@ ZTEST(buttons, test_botao_2_pausa_e_retoma)
 
 ZTEST(buttons, test_botao_de_alternar_tela_nao_publica_comando)
 {
-	/* É da interface, não do transporte: quem o atende é o display.c. */
+	/* É da interface, não do transporte: quem o atende é o display_ui.c. */
 	click(DISPLAY_TOGGLE_BUTTON);
 
 	expect_empty();

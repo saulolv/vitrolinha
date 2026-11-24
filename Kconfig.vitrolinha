@@ -78,6 +78,22 @@ config VITROLINHA_PLAYER
 	  Um teste só a enxerga se o Kconfig dele fizer `rsource` deste
 	  arquivo; sem isso o player fica fora do build dele.
 
+config VITROLINHA_DISPLAY_FPS_TEST
+	bool "Teste de desempenho do display no lugar da interface"
+	depends on LVGL
+	help
+	  Troca as duas telas por uma demonstração que invalida a tela
+	  inteira a cada 100 ms e registra no log a taxa de flushes por
+	  segundo. Mede o pior caso do barramento I2C do OLED, o quadro
+	  cheio de 1024 bytes, e não o desenho por região suja da interface
+	  de verdade.
+
+	  Só para bancada: com a opção ligada não há biblioteca nem
+	  reprodução na tela. Ver src/display_fps_test.c.
+
+	  Ligar sem editar arquivo nenhum:
+	  scripts/build.sh --pristine -- -DCONFIG_VITROLINHA_DISPLAY_FPS_TEST=y
+
 config VITROLINHA_AUTO_ADVANCE
 	bool "Avanco automatico para a faixa seguinte (RF09)"
 	default y

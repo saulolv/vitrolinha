@@ -39,9 +39,24 @@ target_sources_ifdef(CONFIG_INPUT app PRIVATE
 
 # A interface. Condicional porque depende do LVGL, que só a aplicação liga: na
 # lista comum, cada suíte de teste tentaria compilá-la sem os cabeçalhos dele.
-target_sources_ifdef(CONFIG_LVGL app PRIVATE
-  ${CMAKE_CURRENT_LIST_DIR}/display.c
-)
+#
+# O display.c põe a interface de pé; as telas são as dos outros quatro. Com o
+# teste de desempenho do display ligado, a demonstração dele toma o lugar
+# delas (ver Kconfig.vitrolinha).
+if(CONFIG_LVGL)
+  target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/display.c)
+
+  if(CONFIG_VITROLINHA_DISPLAY_FPS_TEST)
+    target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/display_fps_test.c)
+  else()
+    target_sources(app PRIVATE
+      ${CMAKE_CURRENT_LIST_DIR}/display_ui.c
+      ${CMAKE_CURRENT_LIST_DIR}/display_library.c
+      ${CMAKE_CURRENT_LIST_DIR}/display_mini.c
+      ${CMAKE_CURRENT_LIST_DIR}/display_playback.c
+    )
+  endif()
+endif()
 
 # A saída de tom: na placa, o buzzer por PWM; no simulador, a captura em
 # memória.
