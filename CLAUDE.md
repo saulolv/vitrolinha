@@ -39,7 +39,7 @@ O P2 também resolve conflitos de pino que o P1 tem (GPIO 14/15 disputados entre
 | OLED **SSD1306** 128x64 | `oled`, `chosen zephyr,display` | I²C0 @ 0x3c, SDA GPIO 4, SCL GPIO 5 | **Não é SH1106.** Descrito como SH1106 ele confirma no I²C e aceita tudo, mas a bomba de carga não liga e a tela fica preta sem erro |
 | Encoder PEC12R | `encoder_qdec` (`gpio-qdec`) | A GPIO 42, B GPIO 43 | `INPUT_REL_WHEEL`, `steps-per-period = <4>`, acorda por interrupção |
 | Clique do encoder | `enc_button` / `enc-button` | GPIO 38 | `gpio-keys`, `INPUT_KEY_ENTER` |
-| Botões 0-3 | `button0`..`button3` | GPIO 23, 22, 19, 18 | `INPUT_BTN_0..3`, ativo-baixo. **Sem serigrafia no P2, e a ordem física não segue a numérica** |
+| Botões 0-3 | `button0`..`button3` | GPIO 23, 22, 19, 18 | `INPUT_BTN_0..3`, ativo-baixo. Sem serigrafia no P2; **da esquerda para a direita, a ordem física é a numérica** (conferido na bancada) |
 | microSD | `sdhc0` (`zephyr,sdhc-spi-slot`) | SPI0: SCK 34, MOSI 35, MISO 36, CS 37 | disco `"SD"`, 24 MHz. Barramento separado do IMU (SPI1) |
 | Detecção de cartão | `sd_cd` (`edge,gpio-inputs`) | GPIO 33 | ativo-baixo, pull-up externo de 10k. Nenhum driver liga nele por padrão — **a aplicação o liga à pilha SD por `cd-gpios`** |
 | Potenciômetro | `potentiometer` `channel@1` | GPIO 41 (ADC1) | fora do MVP |
@@ -229,10 +229,10 @@ O encoder navega, os botões controlam o transporte. Regra de uma linha:
 |---|---|
 | Girar encoder | Na biblioteca, move o destaque; na reprodução, volta à biblioteca |
 | Clicar encoder | Na biblioteca, **toca imediatamente** e abre a reprodução; na reprodução, volta |
-| `INPUT_BTN_0` | Tocar / pausar |
-| `INPUT_BTN_1` | **Alterna** biblioteca ↔ reprodução (`DISPLAY_TOGGLE_BUTTON`) |
-| `INPUT_BTN_2` | Faixa anterior |
-| `INPUT_BTN_3` | Faixa seguinte |
+| Botão 1, `INPUT_BTN_0` | Faixa anterior |
+| Botão 2, `INPUT_BTN_1` | Tocar / pausar |
+| Botão 3, `INPUT_BTN_2` | Faixa seguinte |
+| Botão 4, `INPUT_BTN_3` | **Alterna** biblioteca ↔ reprodução (`DISPLAY_TOGGLE_BUTTON`) |
 
 O botão 4 alterna em vez de só voltar, porque a espec pedia "voltar ao menu" e
 não previa o caminho de volta — com os quatro botões ocupados, não existia
@@ -241,11 +241,11 @@ controle para reabrir a tela de reprodução. Alternar é superconjunto, custo z
 Não há fila de reprodução: selecionar troca a faixa. Na biblioteca, o item que
 está tocando leva um marcador `>`, e um arquivo rejeitado pelo parser leva `!`.
 
-**A ordem física dos botões é tarefa da E1.** Os GPIOs são 23, 22, 19, 18 nessa
-ordem de alias, o P2 não tem serigrafia, e a ordem física não segue a numérica.
-O mapeamento acima é **por código**, provisório: a espec pede anterior, tocar,
-seguinte e alternar da esquerda para a direita, e ajustar é mudar a tabela de
-`src/buttons.c` e o `DISPLAY_TOGGLE_BUTTON`, que um `BUILD_ASSERT` mantém juntos.
+**A ordem física dos botões foi identificada na bancada (E1):** da esquerda para
+a direita, os botões 1 a 4 são `INPUT_BTN_0` a `INPUT_BTN_3`, a mesma ordem dos
+aliases. O mapeamento segue a espec — anterior, tocar, seguinte e alternar — e
+mora na tabela de `src/buttons.c` e no `DISPLAY_TOGGLE_BUTTON`, que um
+`BUILD_ASSERT` mantém juntos. No simulador, as teclas 1 a 4 são os botões 1 a 4.
 Não há botão de reiniciar: tocar depois do fim, ou clicar de novo a faixa.
 
 ### Fim de faixa

@@ -30,8 +30,14 @@ static const uint8_t mario[] = {
 #include "mario.inc"
 };
 
-/* Cabe no buffer de faixa, senão a carga a recusaria antes do parser. */
+/* O arquivo de calibração: 240 notas idênticas, um minuto exato. */
+static const uint8_t calibra[] = {
+#include "calibra.inc"
+};
+
+/* Cabem no buffer de faixa, senão a carga os recusaria antes do parser. */
 BUILD_ASSERT(sizeof(mario) <= 4096U, "mario.csv passou do buffer de faixa");
+BUILD_ASSERT(sizeof(calibra) <= 4096U, "calibra.csv passou do buffer de faixa");
 
 ZTEST_SUITE(parser_csv, NULL, NULL, NULL, NULL, NULL);
 
@@ -102,6 +108,27 @@ ZTEST(parser_csv, test_faixa_longa_valida_inteira)
 	zassert_equal(0, status);
 	zassert_equal(309U + 1U, events, "uma por linha, mais o silencio final");
 	zassert_equal(84582000U, previous);
+}
+
+ZTEST(parser_csv, test_calibracao_um_minuto_de_notas_identicas)
+{
+	struct parser_csv parser;
+	struct parser_csv_error error = {.line = 99U, .column = 99U};
+
+	/* O instrumento do RNF01: cada nota começa num múltiplo exato de
+	 * 250 ms, e a última termina em 60 s. Um tom de 200 ms e 50 ms de
+	 * silêncio dão uma borda de subida por nota para o pino de medição.
+	 */
+	zassert_ok(parser_csv_init(&parser, calibra, sizeof(calibra), &error),
+		   "linha %zu, coluna %zu", error.line, error.column);
+	zassert_equal(480U, parser.row_count);
+	zassert_equal(60000000U, parser.total_us);
+	for (uint32_t note = 0U; note < 240U; note++) {
+		expect_event(&parser, note * 250000U, 1000U);
+		expect_event(&parser, note * 250000U + 200000U, 0U);
+	}
+	expect_event(&parser, 60000000U, 0U);
+	zassert_equal(0, parser_csv_next(&parser, &(struct playback_event){0}));
 }
 
 ZTEST(parser_csv, test_pausas_fixture_e_silencio_final)

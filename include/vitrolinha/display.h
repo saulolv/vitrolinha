@@ -24,10 +24,10 @@ extern "C" {
  * @brief Botão que alterna entre biblioteca e reprodução.
  *
  * É da interface, não do transporte: não vira comando do player, e o
- * `buttons.c` o deixa passar sem publicar nada. Por código, não por posição
- * física — a ordem física dos botões é tarefa de bancada (issue #27).
+ * `buttons.c` o deixa passar sem publicar nada. É o botão 4 da placa, o
+ * mais à direita, como a especificação pede (issue #27).
  */
-#define DISPLAY_TOGGLE_BUTTON INPUT_BTN_1
+#define DISPLAY_TOGGLE_BUTTON INPUT_BTN_3
 
 /**
  * @brief Quanto tempo a tela de reprodução mostra o erro de carga antes de

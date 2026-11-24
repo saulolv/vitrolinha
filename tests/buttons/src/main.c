@@ -57,11 +57,11 @@ static void buttons_before(void *fixture)
 
 ZTEST_SUITE(buttons, NULL, NULL, buttons_before, NULL, NULL);
 
-ZTEST(buttons, test_botao_0_pausa_e_retoma)
+ZTEST(buttons, test_botao_2_pausa_e_retoma)
 {
 	/* Um comando por aperto: o player alterna entre pausar e retomar. */
-	click(INPUT_BTN_0);
-	click(INPUT_BTN_0);
+	click(INPUT_BTN_1);
+	click(INPUT_BTN_1);
 
 	expect_cmd(CMD_PLAY_PAUSE);
 	expect_cmd(CMD_PLAY_PAUSE);
@@ -76,12 +76,12 @@ ZTEST(buttons, test_botao_de_alternar_tela_nao_publica_comando)
 	expect_empty();
 }
 
-ZTEST(buttons, test_botoes_2_e_3_trocam_de_faixa)
+ZTEST(buttons, test_botoes_1_e_3_trocam_de_faixa)
 {
 	/* Um comando por aperto; a volta nas pontas é do player. */
+	click(INPUT_BTN_0);
 	click(INPUT_BTN_2);
-	click(INPUT_BTN_3);
-	click(INPUT_BTN_3);
+	click(INPUT_BTN_2);
 
 	expect_cmd(CMD_PREV);
 	expect_cmd(CMD_NEXT);
@@ -91,7 +91,7 @@ ZTEST(buttons, test_botoes_2_e_3_trocam_de_faixa)
 
 ZTEST(buttons, test_soltar_nao_publica)
 {
-	zassert_ok(input_report_key(NULL, INPUT_BTN_0, 0, true, K_FOREVER));
+	zassert_ok(input_report_key(NULL, INPUT_BTN_1, 0, true, K_FOREVER));
 
 	expect_empty();
 }
@@ -119,7 +119,7 @@ ZTEST(buttons, test_fila_cheia_descarta_a_pausa)
 {
 	fill_queue(0U);
 
-	click(INPUT_BTN_0);
+	click(INPUT_BTN_1);
 
 	for (size_t i = 0U; i < CMD_QUEUE_DEPTH; i++) {
 		expect_cmd(CMD_NEXT);
