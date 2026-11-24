@@ -1,31 +1,23 @@
 /**
  * @file main.c
- * @brief Ponto de entrada do Vitrolinha.
+ * @brief Ponto de entrada do Vitrolinha: põe os módulos de pé, na ordem.
  *
- * **Andaime, não produto.** Este `main` existe para provar que o ambiente
- * está de pé: pisca um LED e imprime no console um relatório de bring-up
- * que exercita os quatro contratos compartilhados. Se o relatório sai
- * completo, as três trilhas podem trabalhar em paralelo sem esperar umas
- * pelas outras.
+ * 1. O LED de sinal de vida.
+ * 2. O cartão e a biblioteca: o monitor do cartão, a primeira varredura, e o
+ *    observador que varre de novo a cada troca de cartão.
+ * 3. A interface, que mostra a biblioteca.
+ * 4. A reprodução: loader, saída de tom e player.
  *
- * É descartado inteiro quando as threads `player`, `ui`, `input` e `loader`
- * existirem — nenhuma linha daqui foi escrita para durar.
+ * Depois disso o `main` só pisca o LED: o trabalho está nas threads de cada
+ * módulo.
  *
  * Compila para os dois alvos: a ZBook P2 e o simulador. O que difere entre
- * eles é devicetree e configuração, não código — é o que torna possível
- * desenvolver a interface e o armazenamento sem a placa em mãos.
- *
- * O `main` também põe o player de pé, e a seleção na tela toca de verdade:
- * na placa, no buzzer; no simulador, para a captura em memória.
+ * eles é devicetree e configuração, não código.
  */
 
 #include <vitrolinha/card.h>
-#include <vitrolinha/cmd.h>
 #include <vitrolinha/display.h>
 #include <vitrolinha/library.h>
-#include <vitrolinha/snapshot.h>
-#include <vitrolinha/storage.h>
-#include <vitrolinha/track.h>
 
 #include <app_version.h>
 
@@ -117,7 +109,8 @@ static int heartbeat_init(void)
  */
 static void card_changed(enum card_state state)
 {
-	LOG_INF("Cartao mudou para: %s", card_state_name(state));
+	/* A transição o próprio módulo do cartão já registra no log. */
+	ARG_UNUSED(state);
 
 	(void)library_refresh();
 }
@@ -129,7 +122,7 @@ static void card_changed(enum card_state state)
  * Ausência de cartão não é falha de inicialização: a placa continua ligando,
  * e o monitor passa a avisar se um cartão aparecer.
  */
-static void card_report(void)
+static void card_start(void)
 {
 	int err;
 
@@ -151,118 +144,6 @@ static void card_report(void)
 	 */
 	card_observe(card_changed);
 	(void)library_refresh();
-
-	LOG_INF("Cartao: %s (ponto de montagem %s)", card_state_name(card_get_state()),
-		CARD_MOUNT_POINT);
-}
-
-/**
- * @brief Exercita o contrato do @ref library.h e lista a biblioteca no log.
- *
- * Quem responde depende do build: na placa, o cartão que o @ref card_report
- * acabou de montar; no simulador, a implementação de mentira, com duas faixas
- * embutidas, ou os CSVs de uma pasta do computador (storage_host). Esta
- * função não sabe qual — é o que a fronteira do @ref storage.h compra.
- *
- * @return Quantidade de faixas encontradas, ou `-ENODEV` sem biblioteca.
- */
-static int library_report(void)
-{
-	static struct track_meta library[LIBRARY_MAX];
-	static uint8_t buf[STORAGE_FILE_MAX];
-	enum library_state state = library_state();
-	size_t skipped;
-	int count;
-
-	/* É este texto que a tela de erro vai mostrar (issue #30). */
-	if (state != LIBRARY_READY) {
-		LOG_WRN("Biblioteca: %s", library_state_text(state));
-		return -ENODEV;
-	}
-
-	count = library_copy(library, ARRAY_SIZE(library), &skipped);
-
-	LOG_INF("Biblioteca: %d faixa(s)", count);
-
-	/* É este aviso que vira mensagem na tela quando a interface existir. */
-	if (skipped > 0U) {
-		LOG_WRN("Biblioteca cheia: %zu arquivo(s) ignorado(s)", skipped);
-	}
-
-	for (int i = 0; i < count; i++) {
-		int size = library_load(i, buf, sizeof(buf), NULL);
-
-		/* A mensagem é a mesma que a tela de erro vai mostrar. */
-		if (size < 0) {
-			LOG_WRN("  [%u] %-16s  %s (%d)", library[i].index, library[i].name,
-				storage_error_text(size), size);
-			continue;
-		}
-
-		LOG_INF("  [%u] %-16s  %d bytes%s", library[i].index, library[i].name,
-			size, library[i].valid ? "" : "  (invalida)");
-	}
-
-	return count;
-}
-
-/**
- * @brief Exercita o contrato do @ref snapshot.h.
- *
- * Publica um instantâneo de faixa tocando e o relê pelo mesmo caminho que a
- * `ui` usa, para conferir que a conversão de decorrido e de progresso está
- * de pé. Depois devolve o repouso: a tela lê o mesmo registro, e sem isso
- * mostraria uma faixa de mentira tocando no primeiro minuto.
- *
- * Chamar antes de @ref playback_start: depois dele o registro é do player.
- */
-static void snapshot_report(void)
-{
-	const struct player_snapshot playing = {
-		.state = PLAYER_PLAYING,
-		.base_us = 0U,
-		.total_us = 60U * USEC_PER_SEC,
-		.track = 0,
-	};
-	const struct player_snapshot idle = SNAPSHOT_IDLE_INITIALIZER;
-	struct player_snapshot copy;
-
-	snapshot_publish(&playing);
-	snapshot_read(&copy);
-	snapshot_publish(&idle);
-
-	LOG_INF("Instantaneo: faixa %d, %u us de %u us (%u/1000)", copy.track,
-		snapshot_elapsed_us(&copy, 30U * USEC_PER_SEC), copy.total_us,
-		snapshot_progress_permille(&copy, 30U * USEC_PER_SEC));
-}
-
-/**
- * @brief Exercita o contrato do @ref cmd.h.
- *
- * Publica e consome um comando pela fila real, no mesmo sentido em que
- * `input` e `player` vão usá-la.
- */
-static void cmd_report(void)
-{
-	struct cmd received;
-	int err;
-
-	cmd_flush();
-
-	err = cmd_post(CMD_SELECT, 1);
-	if (err != 0) {
-		LOG_ERR("Nao consegui enfileirar comando: %d", err);
-		return;
-	}
-
-	err = cmd_get(&received, K_NO_WAIT);
-	if (err != 0) {
-		LOG_ERR("Nao consegui retirar comando: %d", err);
-		return;
-	}
-
-	LOG_INF("Comando: %s faixa %d", cmd_kind_name((enum cmd_kind)received.kind),
-		received.track);
 }
 
 #if defined(VITROLINHA_HAS_PLAYER)
@@ -323,12 +204,7 @@ int main(void)
 		return err;
 	}
 
-	card_report();
-	(void)library_report();
-
-	/* Os dois exercitam registros que o player toma para si ao subir. */
-	snapshot_report();
-	cmd_report();
+	card_start();
 
 	/* Depois do cartão: a lista da tela sai da varredura do volume montado. */
 	err = display_init();
@@ -340,7 +216,7 @@ int main(void)
 	playback_start();
 #endif
 
-	LOG_INF("Bring-up completo. LED de sinal de vida piscando.");
+	LOG_INF("Vitrolinha no ar. LED de sinal de vida piscando.");
 
 	while (true) {
 		(void)gpio_pin_toggle_dt(&heartbeat);
