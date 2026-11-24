@@ -11,6 +11,8 @@
 #include <vitrolinha/parser.h>
 #include <vitrolinha/storage.h>
 
+#include "priorities.h"
+
 #include <errno.h>
 #include <zephyr/kernel.h>
 
@@ -23,13 +25,11 @@
  */
 #define LOADER_STACK_SIZE 4096
 
-/**
- * @brief Prioridade do worker: baixa, abaixo do `player`.
- *
- * O worker faz a E/S de carga e repõe a fila de eventos; quem não pode
- * esperar por ele é o `player`, que só consome a fila já pronta.
+/*
+ * Prioridade: ::PRIORITY_LOADER, abaixo do `player` (src/priorities.h). O
+ * worker faz a E/S de carga e repõe a fila de eventos; quem não pode esperar
+ * por ele é o `player`, que só consome a fila já pronta.
  */
-#define LOADER_PRIORITY 8
 
 /**
  * @brief Eventos prontos à frente do callback do timer: 16 notas, 256 B.
@@ -93,7 +93,7 @@ static void loader_worker(void *a, void *b, void *c)
 			continue;
 		}
 		if (id != worker_id) {
-			struct parser_csv_error error = {0};
+			struct parser_error error = {0};
 			int status;
 
 			worker_id = id;
@@ -171,7 +171,7 @@ static void loader_worker(void *a, void *b, void *c)
 }
 
 K_THREAD_DEFINE(loader_thread, LOADER_STACK_SIZE, loader_worker, NULL, NULL, NULL,
-		LOADER_PRIORITY, 0, SYS_FOREVER_MS);
+		PRIORITY_LOADER, 0, SYS_FOREVER_MS);
 
 int loader_init(void)
 {

@@ -7,6 +7,7 @@
  * dividem. Nenhuma das duas é o `player`.
  */
 #include <vitrolinha/last_track.h>
+#include <vitrolinha/last_track_test.h>
 #include <vitrolinha/library.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/track.h>
@@ -18,6 +19,8 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
 
+#include "priorities.h"
+
 LOG_MODULE_REGISTER(last_track, LOG_LEVEL_INF);
 
 /**
@@ -26,12 +29,11 @@ LOG_MODULE_REGISTER(last_track, LOG_LEVEL_INF);
  */
 #define LAST_TRACK_STACK_SIZE 1536
 
-/**
- * @brief Prioridade 13: abaixo do monitor do cartão (12), acima só do log.
- *
- * Gravar a última faixa nunca é urgente.
+/*
+ * Prioridade: ::PRIORITY_LAST_TRACK, a mais baixa do projeto, abaixo do
+ * monitor do cartão e acima só do log (src/priorities.h). Gravar a última
+ * faixa nunca é urgente.
  */
-#define LAST_TRACK_PRIORITY 13
 
 /** @brief O que vai para a flash: a faixa e o nome que a reconhece. */
 struct last_track_record {
@@ -217,7 +219,7 @@ static void last_track_worker(void *a, void *b, void *c)
 }
 
 K_THREAD_DEFINE(last_track_thread, LAST_TRACK_STACK_SIZE, last_track_worker, NULL, NULL, NULL,
-		LAST_TRACK_PRIORITY, 0, SYS_FOREVER_MS);
+		PRIORITY_LAST_TRACK, 0, SYS_FOREVER_MS);
 
 void last_track_start(void)
 {

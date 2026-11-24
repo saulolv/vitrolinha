@@ -124,7 +124,7 @@
 
 	/*
 	 * As setas e o Enter chegam ao LVGL como teclado. Quando este nó
-	 * existe, src/display.c o usa no lugar do `lvgl_encoder_input`.
+	 * existe, src/display_ui.c o usa no lugar do `lvgl_encoder_input`.
 	 */
 	lvgl_keypad: lvgl_keypad {
 		compatible = "zephyr,lvgl-keypad-input";

@@ -7,7 +7,7 @@ um único escritor, e as outras só a leem:
 |---|---|---|---|
 | Reprodução | thread `player` e o callback do timer | `ui`, pelo instantâneo | `src/player.c` |
 | Biblioteca | monitor do cartão e `loader` | `player` (sem trava), `ui` | `src/library.c` |
-| Navegação | `ui`, no laço do LVGL | ninguém | `src/display.c` |
+| Navegação | `ui`, no laço do LVGL | ninguém | `src/display_ui.c` |
 
 Os comandos entram na reprodução por uma fila (`cmd.h`), vindos dos botões e
 do clique na lista; a reprodução publica o resultado no instantâneo

@@ -9,11 +9,13 @@
 #define _POSIX_C_SOURCE 200809L
 #include <vitrolinha/cmd.h>
 #include <vitrolinha/library.h>
+#include <vitrolinha/library_test.h>
 #include <vitrolinha/loader.h>
 #include <vitrolinha/playback_trace.h>
 #include <vitrolinha/player.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/status_led.h>
+#include <vitrolinha/status_led_test.h>
 #include <vitrolinha/tone.h>
 
 #include "fake_strip.h"

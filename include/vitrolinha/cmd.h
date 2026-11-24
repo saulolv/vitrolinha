@@ -125,23 +125,6 @@ int cmd_get(struct cmd *out, k_timeout_t timeout);
  */
 void cmd_poll_event_init(struct k_poll_event *event);
 
-/**
- * @brief Descarta todos os comandos pendentes.
- *
- * O firmware não a chama: o player consome cada comando na ordem em que
- * chega. Existe para que cada caso de teste comece com a fila vazia.
- */
-void cmd_flush(void);
-
-/**
- * @brief Nome legível de um comando, para log e para as mensagens de teste.
- *
- * @param kind Comando.
- *
- * @return Literal estático; `"?"` se @p kind não for um comando válido.
- */
-const char *cmd_kind_name(enum cmd_kind kind);
-
 #ifdef __cplusplus
 }
 #endif

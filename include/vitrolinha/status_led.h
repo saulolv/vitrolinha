@@ -42,15 +42,6 @@ extern "C" {
 #define STATUS_LED_LEVEL 16U
 
 /**
- * @brief A cor de um estado. Função pura: é a tabela do cabeçalho.
- *
- * @param snap    Instantâneo lido.
- * @param library Estado da biblioteca.
- * @return A cor dos quatro LEDs.
- */
-struct led_rgb status_led_color(const struct player_snapshot *snap, enum library_state library);
-
-/**
  * @brief Confere a fita e põe a thread de pé.
  *
  * @retval 0       Thread no ar.

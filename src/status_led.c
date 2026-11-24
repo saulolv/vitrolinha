@@ -3,12 +3,15 @@
  * @brief Implementação de @ref status_led.h.
  */
 #include <vitrolinha/status_led.h>
+#include <vitrolinha/status_led_test.h>
 
 #include <errno.h>
 
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
+
+#include "priorities.h"
 
 #define STRIP_NODE DT_ALIAS(led_strip)
 
@@ -18,12 +21,11 @@
 /** @brief Pilha da thread: uma leitura do instantâneo e uma escrita na fita. */
 #define STATUS_LED_STACK_SIZE 1024
 
-/**
- * @brief Prioridade 11: abaixo da tela (10), acima do monitor do cartão (12).
- *
- * A cor atrasada de um quadro não é defeito; a nota atrasada é.
+/*
+ * Prioridade: ::PRIORITY_STATUS_LED, logo abaixo da tela e acima do monitor do
+ * cartão (src/priorities.h). A cor atrasada de um quadro não é defeito; a
+ * nota atrasada é.
  */
-#define STATUS_LED_PRIORITY 11
 
 static const struct device *const strip = DEVICE_DT_GET(STRIP_NODE);
 
@@ -91,7 +93,7 @@ static void status_led_worker(void *a, void *b, void *c)
 }
 
 K_THREAD_DEFINE(status_led_thread, STATUS_LED_STACK_SIZE, status_led_worker, NULL, NULL, NULL,
-		STATUS_LED_PRIORITY, 0, SYS_FOREVER_MS);
+		PRIORITY_STATUS_LED, 0, SYS_FOREVER_MS);
 
 int status_led_init(void)
 {

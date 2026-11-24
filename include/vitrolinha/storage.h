@@ -10,8 +10,8 @@
  *
  * Montar o cartão **não** faz parte da interface, de propósito: a
  * implementação que fala com o hardware monta sozinha na inicialização, e o
- * chamador só descobre o resultado por @ref storage_present ou pelo código
- * de erro da varredura.
+ * chamador só descobre o resultado pelo código de erro da varredura e da
+ * carga: `-ENODEV` sem cartão, `-EIO` com cartão que não lê.
  *
  * @note Nada aqui pode ser chamado da thread `player` nem do callback do
  *       temporizador. É por isso que o arquivo é carregado inteiro antes de
@@ -122,16 +122,6 @@ int storage_load(int track, uint8_t *buf, size_t len);
  *         genérica em vez de NULL.
  */
 const char *storage_error_text(int err);
-
-/**
- * @brief Diz se há cartão utilizável agora.
- *
- * @return Verdadeiro se a biblioteca pode ser varrida e lida.
- *
- * @note Falso durante a reprodução não interrompe a faixa: ela já está
- *       inteira em RAM (RNF07).
- */
-bool storage_present(void);
 
 #ifdef __cplusplus
 }

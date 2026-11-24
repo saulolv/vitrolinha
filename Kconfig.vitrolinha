@@ -58,6 +58,42 @@ config VITROLINHA_TRANSPOSE_MIN_HZ
 	  limiar sai dessa medição, e não de estimativa. O CSV nunca é
 	  transposto, porque o arquivo de calibração tem de tocar o que diz.
 
+config VITROLINHA_PLAYER
+	bool
+	default y
+	depends on POLL
+	depends on PWM || (BOARD_NATIVE_SIM && EXTERNAL_LIBC)
+	help
+	  Liga o player e o loader. Sem prompt: é ligado sozinho onde os
+	  dois podem existir, e é a única condição que decide isso — o
+	  src/CMakeLists.txt compila player.c e loader.c por ela, e o
+	  src/main.c põe a reprodução de pé por ela.
+
+	  Exige uma saída de tom: o PWM (na placa, o buzzer; em
+	  tests/tone_pwm/, o PWM de mentira do Zephyr) ou, no simulador com
+	  a libc do computador, a captura em memória do tone_trace. Exige
+	  também `CONFIG_POLL`: o player espera comando e resultado de carga
+	  num mesmo `k_poll`.
+
+	  Um teste só a enxerga se o Kconfig dele fizer `rsource` deste
+	  arquivo; sem isso o player fica fora do build dele.
+
+config VITROLINHA_DISPLAY_FPS_TEST
+	bool "Teste de desempenho do display no lugar da interface"
+	depends on LVGL
+	help
+	  Troca as duas telas por uma demonstração que invalida a tela
+	  inteira a cada 100 ms e registra no log a taxa de flushes por
+	  segundo. Mede o pior caso do barramento I2C do OLED, o quadro
+	  cheio de 1024 bytes, e não o desenho por região suja da interface
+	  de verdade.
+
+	  Só para bancada: com a opção ligada não há biblioteca nem
+	  reprodução na tela. Ver src/display_fps_test.c.
+
+	  Ligar sem editar arquivo nenhum:
+	  scripts/build.sh --pristine -- -DCONFIG_VITROLINHA_DISPLAY_FPS_TEST=y
+
 config VITROLINHA_AUTO_ADVANCE
 	bool "Avanco automatico para a faixa seguinte (RF09)"
 	default y

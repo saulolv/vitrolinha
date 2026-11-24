@@ -9,6 +9,7 @@
 
 #include <vitrolinha/parser.h>
 #include <vitrolinha/parser_rtttl.h>
+#include <vitrolinha/parser_rtttl_test.h>
 #include <vitrolinha/tone.h>
 
 #include <errno.h>
@@ -127,7 +128,7 @@ ZTEST(parser_rtttl, test_toda_nota_do_formato_cabe_na_saida)
 ZTEST(parser_rtttl, test_fur_elise_nota_a_nota)
 {
 	struct parser_rtttl parser;
-	struct parser_csv_error error = {.line = 99U, .column = 99U};
+	struct parser_error error = {.line = 99U, .column = 99U};
 
 	zassert_ok(parser_rtttl_init(&parser, furelise, sizeof(furelise), &error, 0U));
 	zassert_equal(0U, error.line);
@@ -354,7 +355,7 @@ static void expect_errors(const struct error_case *cases, size_t count)
 {
 	for (size_t i = 0; i < count; i++) {
 		struct parser_rtttl parser;
-		struct parser_csv_error error;
+		struct parser_error error;
 
 		zassert_equal(cases[i].code,
 			      parser_rtttl_init(&parser, (const uint8_t *)cases[i].text,
@@ -423,7 +424,7 @@ ZTEST(parser_rtttl, test_faixa_cabe_em_32_bits_de_us)
 	 */
 	static char text[16 + (18U * 3U)];
 	struct parser_rtttl parser;
-	struct parser_csv_error error;
+	struct parser_error error;
 
 	strcpy(text, "x:b=1:");
 	for (size_t i = 0; i < 17U; i++) {
@@ -441,7 +442,7 @@ ZTEST(parser_rtttl, test_faixa_cabe_em_32_bits_de_us)
 ZTEST(parser_rtttl, test_argumentos_invalidos)
 {
 	struct parser_rtttl parser = {0};
-	struct parser_csv_error error = {.line = 99U, .column = 99U};
+	struct parser_error error = {.line = 99U, .column = 99U};
 	struct playback_event event = {.offset_us = 123U};
 
 	zassert_equal(-EINVAL, parser_rtttl_init(NULL, furelise, sizeof(furelise), &error, 0U));
@@ -531,7 +532,7 @@ ZTEST(parser_rtttl, test_fachada_reconhece_o_formato_pelo_conteudo)
 {
 	struct parser parser;
 	struct playback_event event;
-	struct parser_csv_error error = {.line = 99U};
+	struct parser_error error = {.line = 99U};
 
 	zassert_ok(parser_init(&parser, furelise, sizeof(furelise), &error));
 	zassert_true(parser.rtttl);

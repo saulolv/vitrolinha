@@ -19,7 +19,7 @@ struct csv_line {
 };
 
 /** @brief Preenche o diagnóstico opcional e devolve o código de erro. */
-static int fail(struct parser_csv_error *error, size_t line, size_t column, int code)
+static int fail(struct parser_error *error, size_t line, size_t column, int code)
 {
 	if (error != NULL) {
 		error->line = line;
@@ -63,7 +63,7 @@ static struct csv_line read_line(const uint8_t *buffer, size_t length, size_t *p
  *       são aceitos; todos os acessos respeitam o tamanho da linha.
  */
 static int read_uint32(const struct csv_line *line, size_t *column, uint32_t *out,
-		       size_t line_number, struct parser_csv_error *error)
+		       size_t line_number, struct parser_error *error)
 {
 	size_t start = *column;
 	uint32_t value = 0U;
@@ -99,7 +99,7 @@ static int read_uint32(const struct csv_line *line, size_t *column, uint32_t *ou
  *       temporário de 64 bits impede overflow na conversão de ms para us.
  */
 static int read_event(struct parser_csv *parser, struct playback_event *out,
-		      struct parser_csv_error *error)
+		      struct parser_error *error)
 {
 	size_t position = parser->position;
 	struct csv_line line = read_line(parser->buffer, parser->length, &position);
@@ -154,12 +154,12 @@ static int read_event(struct parser_csv *parser, struct playback_event *out,
 }
 
 int parser_csv_init(struct parser_csv *parser, const uint8_t *buffer,
-		    size_t length, struct parser_csv_error *error)
+		    size_t length, struct parser_error *error)
 {
 	static const char header[] = PARSER_CSV_HEADER;
 
 	if (error != NULL) {
-		*error = (struct parser_csv_error){0};
+		*error = (struct parser_error){0};
 	}
 
 	if (parser == NULL) {

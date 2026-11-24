@@ -218,16 +218,6 @@ int library_reject(int track, uint32_t generation);
  */
 const char *library_state_text(enum library_state state);
 
-/**
- * @brief Devolve o módulo ao estado de quem acabou de ligar a placa.
- *
- * Esquece inclusive que algum cartão já foi lido — que é o que separa
- * ::LIBRARY_REMOVED de ::LIBRARY_NO_CARD e ::LIBRARY_REBOOT de
- * ::LIBRARY_UNREADABLE. O firmware não tem motivo para chamar isto; existe
- * para que cada caso de teste comece do boot.
- */
-void library_reset(void);
-
 #ifdef __cplusplus
 }
 #endif

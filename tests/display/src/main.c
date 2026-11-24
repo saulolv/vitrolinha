@@ -12,8 +12,10 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <vitrolinha/cmd.h>
+#include <vitrolinha/cmd_test.h>
 #include <vitrolinha/display.h>
 #include <vitrolinha/library.h>
+#include <vitrolinha/library_test.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/track.h>

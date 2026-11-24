@@ -39,20 +39,18 @@
 
 /*
  * O player só entra no build onde há saída para ele: na placa, o buzzer do
- * tone_pwm; no simulador, a captura em memória do tone_trace. As condições
- * são as mesmas de src/CMakeLists.txt; sem elas, chamar player_init() não
- * linkaria.
+ * tone_pwm; no simulador, a captura em memória do tone_trace. Quem decide é
+ * `CONFIG_VITROLINHA_PLAYER`, a mesma opção pela qual src/CMakeLists.txt
+ * compila player e loader; sem ela, chamar player_init() não linkaria.
+ *
+ * A captura é aberta aqui onde src/CMakeLists.txt compila o playback_trace.
  */
 #if defined(CONFIG_BOARD_NATIVE_SIM) && defined(CONFIG_EXTERNAL_LIBC)
 #define VITROLINHA_HAS_TRACE 1
 #include <vitrolinha/playback_trace.h>
 #endif
 
-#if defined(CONFIG_BOARD_ZBOOK) && defined(CONFIG_PWM)
-#define VITROLINHA_HAS_PWM 1
-#endif
-
-#if defined(CONFIG_POLL) && (defined(VITROLINHA_HAS_TRACE) || defined(VITROLINHA_HAS_PWM))
+#if defined(CONFIG_VITROLINHA_PLAYER)
 #define VITROLINHA_HAS_PLAYER 1
 #include <vitrolinha/loader.h>
 #include <vitrolinha/player.h>

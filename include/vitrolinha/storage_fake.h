@@ -36,7 +36,7 @@ extern "C" {
  * @brief Simula presença ou ausência de cartão.
  *
  * @param present Falso faz @ref storage_scan e @ref storage_load
- *                devolverem `-ENODEV` e @ref storage_present devolver falso.
+ *                devolverem `-ENODEV`.
  */
 void storage_fake_set_present(bool present);
 

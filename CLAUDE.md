@@ -418,13 +418,27 @@ cartão possa atrasar a próxima nota.
 | Thread | Prioridade | Papel |
 |---|---|---|
 | callback do `k_timer` | interrupção | **Dispara cada evento.** Ajusta o tom, reagenda, atualiza o instantâneo |
-| `player` | Alta | Máquina de estados. Acordado por comando, fila baixa ou fim de faixa. Nunca faz E/S de cartão, nem I²C, nem gráficos |
-| `input` | Média-alta | Traduz eventos em comandos e publica em fila |
-| `ui` | Baixa | Laço do LVGL em intervalo fixo, redesenho por região suja |
-| `loader` | Baixa | Lê o arquivo para o buffer, interpreta e preenche a fila de eventos |
+| `player` | Alta (4) | Máquina de estados. Acordado por comando, fila baixa ou fim de faixa. Nunca faz E/S de cartão, nem I²C, nem gráficos |
+| `loader` | Baixa (8) | Lê o arquivo para o buffer, interpreta e preenche a fila de eventos |
+| `ui` | Baixa (10) | Laço do LVGL em intervalo fixo, redesenho por região suja |
 | `status_led` | Baixa (11) | Lê o instantâneo a 10 Hz e pinta os WS2812 quando a cor muda |
 | `card` | Baixa (12) | Sonda o soquete a cada 250 ms, monta e desmonta. É a única que bloqueia por mais de um milissegundo |
-| `last_track` | A mais baixa (13) | Grava a última faixa na flash, com debounce e só com o player fora de tocando |
+| `last_track` | Baixa (13) | Grava a última faixa na flash, com debounce e só com o player fora de tocando |
+| `input` | A mais baixa (14, padrão do Zephyr) | Thread do subsistema `input`: os callbacks dos botões e do encoder rodam nela, e só publicam na fila de comandos ou levantam um pedido para a tela, sem esperar |
+
+A `input` não é uma thread da aplicação, e por isso não está em
+`src/priorities.h`: é a do subsistema, na prioridade padrão. A arquitetura
+original a punha em "média-alta"; na prática ela roda abaixo de todas as
+outras, e não faz diferença perceptível porque seus callbacks só enfileiram.
+Um aperto espera, no pior caso, o fim do trecho em que a `card` ou o LVGL
+estão rodando — a resposta ficou imediata nos testes na placa. Subir a
+prioridade é `CONFIG_INPUT_THREAD_PRIORITY_OVERRIDE`, se a medição do RNF03 na
+placa um dia mostrar atraso.
+
+Os números moram em **`src/priorities.h`**, e só lá: cada módulo usa a
+constante de lá, e `BUILD_ASSERT`s travam a ordem da tabela. O do LVGL é
+`CONFIG_LV_Z_LVGL_WORKQUEUE_PRIORITY`, no `prj.conf`; o cabeçalho o espelha e
+reprova o build se os dois divergirem.
 
 O `loader` interpreta **do buffer em RAM**, não do cartão.
 

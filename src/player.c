@@ -23,6 +23,8 @@
 #include <vitrolinha/storage.h>
 #include <vitrolinha/tone.h>
 
+#include "priorities.h"
+
 #include <errno.h>
 #include <zephyr/kernel.h>
 
@@ -40,13 +42,11 @@ BUILD_ASSERT(STORAGE_FILE_MAX <= UINT16_MAX,
  */
 #define PLAYER_STACK_SIZE 2048
 
-/**
- * @brief Prioridade do `player`: alta, acima do loader e da interface.
- *
- * Acima do worker do loader (8) e da fila de trabalho do LVGL (10), para que
- * nenhuma carga ou redesenho atrase um comando de transporte.
+/*
+ * Prioridade: ::PRIORITY_PLAYER, a mais alta do projeto, acima do worker do
+ * loader e da fila de trabalho do LVGL, para que nenhuma carga ou redesenho
+ * atrase um comando de transporte. A ordem inteira está em src/priorities.h.
  */
-#define PLAYER_PRIORITY 4
 
 static struct k_spinlock lock;
 static struct k_timer timer;
@@ -315,7 +315,7 @@ static void player_worker(void *a, void *b, void *c)
 }
 
 K_THREAD_DEFINE(player_thread, PLAYER_STACK_SIZE, player_worker, NULL, NULL, NULL,
-		PLAYER_PRIORITY, 0, SYS_FOREVER_MS);
+		PRIORITY_PLAYER, 0, SYS_FOREVER_MS);
 
 int player_init(void)
 {

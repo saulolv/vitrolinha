@@ -69,7 +69,7 @@ montagem. Os 2 KB atuais continuam sendo estimativa; o número sai da medição
 da issue #13.
 
 Para a `ui` nunca esperar um cartão lento, a varredura escreve numa cópia de
-trabalho e só a publicação segura a trava da lista. São 896 B fixos a mais
+trabalho e só a publicação segura a trava da lista. São 832 B fixos a mais
 (RNF06). O `player` não toca em trava nenhuma: a máscara das faixas tocáveis
 cabe em 32 bits e é um atômico.
 
@@ -109,3 +109,10 @@ lista.
 `tests/library/` cobre a lógica sobre a implementação de mentira;
 `tests/library_card/` induz as três falhas de ponta a ponta, com o monitor de
 verdade chamando a biblioteca pelo observador, sobre o disco de mentira.
+
+## Errata
+
+A versão original deste registro dizia 896 B para a cópia de trabalho da
+varredura. O certo é 832 B: 32 entradas de `struct track_meta`, de 26 B cada
+(24 do nome, 1 do índice e 1 do `valid`, sem preenchimento). O número foi
+corrigido no texto acima; a decisão não muda.

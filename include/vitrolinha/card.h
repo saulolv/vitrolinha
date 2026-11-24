@@ -124,16 +124,6 @@ int card_init(void);
 enum card_state card_get_state(void);
 
 /**
- * @brief Atalho para "dá para varrer e ler agora".
- *
- * @return Verdadeiro se o estado corrente é ::CARD_READY.
- *
- * @note Falso durante a reprodução não interrompe a faixa: ela já está
- *       inteira em RAM (RNF07).
- */
-bool card_ready(void);
-
-/**
  * @brief Reavalia o cartão agora, montando ou desmontando se preciso.
  *
  * O monitor chama isto sozinho; a aplicação só precisa chamar para forçar uma
@@ -199,15 +189,6 @@ int card_acquire(void);
  * @brief Devolve o volume emprestado por @ref card_acquire.
  */
 void card_release(void);
-
-/**
- * @brief Nome do estado, para log e para tela.
- *
- * @param state Estado a nomear.
- * @return Texto constante, sem acento. Valor fora da enumeração devolve
- *         `"desconhecido"` em vez de indexar fora da tabela.
- */
-const char *card_state_name(enum card_state state);
 
 #ifdef __cplusplus
 }

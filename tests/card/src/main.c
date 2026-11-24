@@ -16,6 +16,7 @@
 #include "fake_disk.h"
 
 #include <vitrolinha/card.h>
+#include <vitrolinha/card_test.h>
 
 #include <errno.h>
 #include <string.h>
@@ -118,7 +119,7 @@ ZTEST(card, test_init_nao_cria_um_segundo_monitor)
 ZTEST(card, test_soquete_vazio_e_ausente)
 {
 	zassert_equal(CARD_ABSENT, card_get_state());
-	zassert_false(card_ready());
+	zassert_not_equal(CARD_READY, card_get_state());
 }
 
 ZTEST(card, test_sem_disco_registrado_o_cartao_e_ausente)
@@ -131,7 +132,7 @@ ZTEST(card, test_sem_disco_registrado_o_cartao_e_ausente)
 	fake_disk_insert(true);
 
 	zassert_equal(CARD_ABSENT, card_refresh());
-	zassert_false(card_ready());
+	zassert_not_equal(CARD_READY, card_get_state());
 }
 
 /* -------------------------------------------------------------------------
@@ -143,7 +144,7 @@ ZTEST(card, test_insercao_e_detectada_pelo_monitor)
 	fake_disk_insert(true);
 
 	zassert_equal(CARD_READY, settle(CARD_READY), "o monitor nao viu a insercao");
-	zassert_true(card_ready());
+	zassert_equal(CARD_READY, card_get_state());
 	zassert_equal(1, observed_calls, "o observador tinha de ser avisado uma vez");
 	zassert_equal(CARD_READY, observed_state);
 }
@@ -156,7 +157,7 @@ ZTEST(card, test_remocao_e_detectada_pelo_monitor)
 	fake_disk_insert(false);
 
 	zassert_equal(CARD_ABSENT, settle(CARD_ABSENT), "o monitor nao viu a remocao");
-	zassert_false(card_ready());
+	zassert_not_equal(CARD_READY, card_get_state());
 	zassert_equal(2, observed_calls, "insercao e remocao, uma notificacao cada");
 	zassert_equal(CARD_ABSENT, observed_state);
 }
@@ -200,7 +201,7 @@ ZTEST(card, test_cartao_que_nao_inicializa_fica_ilegivel)
 	 * mensagem na tela é outra.
 	 */
 	zassert_equal(CARD_UNREADABLE, settle(CARD_UNREADABLE));
-	zassert_false(card_ready());
+	zassert_not_equal(CARD_READY, card_get_state());
 }
 
 ZTEST(card, test_volume_que_nao_monta_fica_ilegivel)
@@ -209,7 +210,7 @@ ZTEST(card, test_volume_que_nao_monta_fica_ilegivel)
 	fake_disk_insert(true);
 
 	zassert_equal(CARD_UNREADABLE, settle(CARD_UNREADABLE));
-	zassert_false(card_ready());
+	zassert_not_equal(CARD_READY, card_get_state());
 }
 
 ZTEST(card, test_ilegivel_nao_e_tentado_de_novo_no_soquete)

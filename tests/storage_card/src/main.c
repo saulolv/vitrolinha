@@ -502,7 +502,6 @@ ZTEST(storage_card, test_varredura_sem_cartao)
 
 	zassert_equal(-ENODEV, storage_scan(library, ARRAY_SIZE(library), &skipped));
 	zassert_equal(0U, skipped);
-	zassert_false(storage_present());
 }
 
 ZTEST(storage_card, test_varredura_com_volume_ilegivel)
@@ -517,7 +516,6 @@ ZTEST(storage_card, test_varredura_com_volume_ilegivel)
 
 	/* Presente: a mensagem é "cartao ilegivel", não "sem cartao". */
 	zassert_equal(-EIO, storage_scan(library, ARRAY_SIZE(library), NULL));
-	zassert_false(storage_present());
 }
 
 ZTEST(storage_card, test_cartao_que_para_de_ler_depois_de_montar)
@@ -579,12 +577,14 @@ ZTEST(storage_card, test_remocao_em_qualquer_ponto_da_varredura)
 
 ZTEST(storage_card, test_presenca_acompanha_o_cartao)
 {
-	zassert_true(storage_present());
+	struct track_meta library[LIBRARY_MAX];
+
+	zassert_true(storage_scan(library, ARRAY_SIZE(library), NULL) >= 0);
 
 	fake_disk_insert(false);
 	zassert_equal(CARD_ABSENT, card_refresh());
 
-	zassert_false(storage_present());
+	zassert_equal(-ENODEV, storage_scan(library, ARRAY_SIZE(library), NULL));
 }
 
 /* -------------------------------------------------------------------------

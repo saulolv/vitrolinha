@@ -39,7 +39,7 @@ extern "C" {
 #define PARSER_CSV_HEADER "frequency_hz,duration_ms"
 
 /** @brief Localização de um erro de validação. */
-struct parser_csv_error {
+struct parser_error {
 	/** @brief Linha a partir de 1; zero para erro sem linha associada. */
 	size_t line;
 	/** @brief Coluna a partir de 1; zero quando não aplicável. */
@@ -80,7 +80,7 @@ struct parser_csv {
  *       antes de converter para total_us. Não chamar no callback do timer.
  */
 int parser_csv_init(struct parser_csv *parser, const uint8_t *buffer,
-		    size_t length, struct parser_csv_error *error);
+		    size_t length, struct parser_error *error);
 
 /**
  * @brief Obtém o próximo evento, incluindo o silêncio final da faixa.

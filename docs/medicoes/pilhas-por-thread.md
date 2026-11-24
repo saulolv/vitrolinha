@@ -103,13 +103,14 @@ o que o linker reservou de fato. Total: **16 704 B** de pilha, 3,1% da SRAM.
 | `last_track_thread` | 13 | 1536 | `LAST_TRACK_STACK_SIZE` (`src/last_track.c`) | Grava a última faixa: `settings` mais NVS mais o driver de flash (RF10) |
 
 As threads `player_thread` (prioridade 4, 2048 B) e `loader_thread`
-(prioridade 8, 4096 B) já existem, mas **só no simulador**: na placa falta a
-saída PWM, e sem ela nenhuma das duas entra no build. O `KNOBS` de
-`scripts/stack_report.py` já tem as linhas delas, para a tabela sair certa no
-dia em que entrarem. A `ui` ainda não existe; quando nascer, entra na tabela
-sozinha — o script lê o que o console mostrar —, mas precisa da sua linha no
-`KNOBS`, senão a coluna "Onde se ajusta" sai com `?`. **A tabela final só vale
-medida sobre o firmware da E6**, com a arquitetura inteira de pé.
+(prioridade 8, 4096 B) não estão na tabela porque ela é de `825d46f`, quando
+a placa ainda não tinha saída PWM. Desde o #42 as duas entram no build da
+placa, e o `KNOBS` de `scripts/stack_report.py` já tem as linhas delas. A `ui`
+não é thread própria: roda na fila de trabalho do LVGL, a linha `lvgl`. Thread
+nova entra na tabela sozinha — o script lê o que o console mostrar —, mas
+precisa da sua linha no `KNOBS`, senão a coluna "Onde se ajusta" sai com `?`.
+**A tabela final só vale medida sobre o firmware completo**, com todas essas
+threads de pé.
 
 ### O que olhar primeiro
 
@@ -125,9 +126,10 @@ São hipóteses de leitura do código, não medições:
 2. **`input` na prioridade 14.** Sem `CONFIG_INPUT_THREAD_PRIORITY_OVERRIDE`,
    a thread do subsistema `input` fica na menor prioridade de aplicação —
    abaixo do `card` (12) e do LVGL (10). Não é assunto de pilha, mas a tabela
-   o expõe: a arquitetura põe a tradução de botões em "média-alta", e um
-   callback do `input` roda na prioridade dessa thread. Fica para a issue do
-   módulo `input`.
+   o expõe: a arquitetura original punha a tradução de botões em
+   "média-alta", e um callback do `input` roda na prioridade dessa thread.
+   Ficou assim, porque os callbacks só enfileiram; a justificativa está na
+   tabela de threads do `CLAUDE.md`.
 3. **A pilha de interrupção.** É a única cujo estouro atinge diretamente a
    tese do trabalho, porque é onde a nota é disparada. Medir com o encoder
    girando, o I²C ocupado e o cartão sendo lido ao mesmo tempo, para que as

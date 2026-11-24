@@ -95,7 +95,7 @@ struct parser_rtttl {
  *                 saída não toca, ou faixa mais longa que 32 bits de µs.
  */
 int parser_rtttl_init(struct parser_rtttl *parser, const uint8_t *buffer, size_t length,
-		      struct parser_csv_error *error, uint32_t transpose_min_hz);
+		      struct parser_error *error, uint32_t transpose_min_hz);
 
 /**
  * @brief Obtém o próximo evento, incluindo o silêncio final da faixa.
@@ -113,17 +113,6 @@ int parser_rtttl_next(struct parser_rtttl *parser, struct playback_event *out);
  * @return 0 no sucesso ou -EINVAL para argumento inválido.
  */
 int parser_rtttl_rewind(struct parser_rtttl *parser);
-
-/**
- * @brief Frequência de uma nota, em Hz arredondados.
- *
- * Temperamento igual com Lá 4 em 440 Hz. Exposta para os testes e para quem
- * precisar da mesma afinação.
- *
- * @param pitch Semitons a partir do Dó 0: `oitava * 12 + nota`, com Dó = 0.
- * @return A frequência, ou 0 para @p pitch acima da oitava 11.
- */
-uint32_t parser_rtttl_frequency(unsigned int pitch);
 
 #ifdef __cplusplus
 }

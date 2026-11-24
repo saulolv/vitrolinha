@@ -442,8 +442,3 @@ int storage_load(int track, uint8_t *buf, size_t len)
 
 	return result;
 }
-
-bool storage_present(void)
-{
-	return card_ready();
-}
