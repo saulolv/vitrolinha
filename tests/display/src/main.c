@@ -523,6 +523,25 @@ ZTEST(display, test_girar_e_clicar_toca_e_abre_a_reproducao)
 	zassert_true(lv_group_get_editing(lv_obj_get_group(ui.list)));
 }
 
+ZTEST(display, test_faixa_lembrada_vira_o_destaque_sem_tocar)
+{
+	struct ui ui = start_ui("cheia");
+
+	/* A faixa do boot (RF10) chega como pedido; a janela rola até ela. */
+	display_cue(6);
+	refresh();
+	zassert_str_equal("  f03\n  f04\n  f05\n  f06", list_text(&ui));
+	zassert_equal(3, focused(&ui));
+	zassert_equal(ui.library, lv_screen_active());
+	expect_no_cmd();
+
+	/* Índice fora da lista: descartado, o destaque fica. */
+	display_cue((int)LIBRARY_MAX);
+	refresh();
+	zassert_equal(3, focused(&ui));
+	zassert_str_equal("  f03\n  f04\n  f05\n  f06", list_text(&ui));
+}
+
 ZTEST(display, test_foco_para_nas_pontas_da_lista)
 {
 	struct ui ui = start_ui("tres");

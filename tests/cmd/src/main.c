@@ -66,6 +66,22 @@ ZTEST(cmd, test_select_carrega_a_faixa)
 	zassert_equal(5, got.track);
 }
 
+ZTEST(cmd, test_cue_carrega_a_faixa_com_a_mesma_validacao)
+{
+	struct cmd got;
+
+	/* A faixa lembrada volta no boot pelo mesmo caminho da seleção, e
+	 * passa pela mesma régua de índice.
+	 */
+	zassert_ok(cmd_post(CMD_CUE, 3));
+	zassert_ok(cmd_get(&got, K_NO_WAIT));
+	zassert_equal((uint8_t)CMD_CUE, got.kind);
+	zassert_equal(3, got.track);
+
+	zassert_equal(-EINVAL, cmd_post(CMD_CUE, TRACK_NONE));
+	zassert_equal(-EINVAL, cmd_post(CMD_CUE, (int16_t)LIBRARY_MAX));
+}
+
 ZTEST(cmd, test_faixa_e_normalizada_fora_do_select)
 {
 	struct cmd got;
@@ -175,6 +191,7 @@ ZTEST(cmd, test_todo_comando_tem_nome)
 		[CMD_PREV] = "PREV",
 		[CMD_SELECT] = "SELECT",
 		[CMD_STOP] = "STOP",
+		[CMD_CUE] = "CUE",
 	};
 
 	for (int i = 0; i < (int)CMD_KIND_COUNT; i++) {

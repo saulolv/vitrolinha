@@ -61,6 +61,20 @@ extern "C" {
  */
 int display_init(void);
 
+/**
+ * @brief Põe o destaque da biblioteca numa faixa, sem tocá-la.
+ *
+ * É a metade visível da faixa lembrada no boot (RF10); a outra é o
+ * ::CMD_CUE do player. Só levanta o pedido: quem move o destaque é o timer
+ * de atualização, sob o lock do LVGL, como no botão de alternar. Faixa que
+ * não está na lista copiada é ignorada.
+ *
+ * Chamável de qualquer thread, sem bloquear.
+ *
+ * @param track Índice na biblioteca.
+ */
+void display_cue(int track);
+
 #ifdef __cplusplus
 }
 #endif

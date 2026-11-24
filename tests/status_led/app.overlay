@@ -1,0 +1,23 @@
+/*
+ * A fita de LEDs de mentira no lugar dos WS2812 da ZBook, no mesmo alias.
+ *
+ * Nasce sem inicializar, para o teste ver status_led_init() recusar uma fita
+ * que não está pronta antes de chamar device_init().
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/led/led.h>
+
+/ {
+	aliases {
+		led-strip = &fake_strip;
+	};
+
+	fake_strip: fake-strip {
+		compatible = "vnd,fake-led-strip";
+		chain-length = <4>;
+		color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
+		zephyr,deferred-init;
+	};
+};

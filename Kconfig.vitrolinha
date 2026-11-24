@@ -56,4 +56,45 @@ config VITROLINHA_TRANSPOSE_MIN_HZ
 	  limiar sai dessa medição, e não de estimativa. O CSV nunca é
 	  transposto, porque o arquivo de calibração tem de tocar o que diz.
 
+config VITROLINHA_AUTO_ADVANCE
+	bool "Avanco automatico para a faixa seguinte (RF09)"
+	default y
+	help
+	  No fim da faixa, em vez de parar, o player carrega a faixa
+	  seguinte da biblioteca, pulando as marcadas com `!`.
+
+	  O avanço segue a ordem da lista e para na última faixa válida: não
+	  dá a volta. Com uma única faixa válida, ela toca uma vez e para.
+	  Com o cartão fora não há vizinha, e a faixa em RAM termina e para.
+
+	  Quem detecta o fim é o callback do temporizador, em interrupção;
+	  ele só sinaliza, e quem pede a carga é a thread `player`. Ver
+	  src/player.c.
+
+config VITROLINHA_LAST_TRACK
+	bool "Lembrar a ultima faixa entre reinicializacoes (RF10)"
+	depends on SETTINGS
+	default y
+	help
+	  Grava a última faixa escolhida pelo subsistema `settings`, na
+	  flash interna — nunca no cartão, cujo caminho de escrita no
+	  sdhc_spi tem um laço de espera sem teto. No boot, com a biblioteca
+	  pronta, a faixa volta como seleção, sem tocar.
+
+	  A gravação mora numa thread de prioridade mínima, com debounce, e
+	  só acontece com o player fora de PLAYER_PLAYING: no RP2350 o
+	  driver de flash trava as interrupções durante a escrita, o que
+	  atrasaria a próxima nota. Ver src/last_track.c.
+
+config VITROLINHA_STATUS_LED
+	bool "Estado da reproducao nos LEDs RGB (RF11)"
+	depends on LED_STRIP
+	default y if $(dt_alias_enabled,led-strip)
+	help
+	  Pinta a fita do alias `led-strip` — na ZBook P2, os quatro WS2812
+	  do GPIO 31, via PIO1 — com o estado do instantâneo: verde tocando,
+	  âmbar pausado, vermelho com erro de carga ou sem biblioteca, e
+	  apagado parado. Lê o instantâneo a taxa fixa numa thread de baixa
+	  prioridade; nada no callback do temporizador. Ver src/status_led.c.
+
 endmenu

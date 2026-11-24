@@ -221,6 +221,13 @@ static int16_t marked_track = TRACK_NONE;
 /** @brief Pedido de alternar a tela, vindo do botão; atendido no timer do LVGL. */
 static atomic_t toggle_requested;
 
+/**
+ * @brief Faixa pedida por @ref display_cue, mais um; zero se nenhuma.
+ *
+ * Mais um para que o zero de toda variável estática signifique "nada".
+ */
+static atomic_t cue_requested;
+
 static lv_indev_t *indev;
 
 static lv_obj_t *library_screen;
@@ -541,6 +548,11 @@ static void toggle_button_cb(struct input_event *evt, void *user_data)
 
 INPUT_CALLBACK_DEFINE(NULL, toggle_button_cb, NULL);
 
+void display_cue(int track)
+{
+	atomic_set(&cue_requested, (atomic_val_t)track + 1);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Reprodução                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -731,6 +743,15 @@ static void refresh_timer_cb(lv_timer_t *timer)
 
 	if (library_sync()) {
 		library_fit();
+	}
+
+	/* Depois da lista: a faixa lembrada só existe na lista já copiada. Um
+	 * índice que não está nela é descartado, sem mover nada.
+	 */
+	int cue = (int)atomic_set(&cue_requested, 0) - 1;
+
+	if (track_listed(cue)) {
+		list_move(cue - (int)cursor);
 	}
 
 	playback_update(&snap, now_us);
@@ -1170,6 +1191,11 @@ static void ui_build(void)
 
 	/* Pede o primeiro quadro antes de desligar o blanking. */
 	lv_timer_handler();
+}
+
+void display_cue(int track)
+{
+	ARG_UNUSED(track);
 }
 
 #endif /* TEST_FPS */

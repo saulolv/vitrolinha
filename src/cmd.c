@@ -34,6 +34,7 @@ static const char *const cmd_names[] = {
 	[CMD_PREV] = "PREV",
 	[CMD_SELECT] = "SELECT",
 	[CMD_STOP] = "STOP",
+	[CMD_CUE] = "CUE",
 };
 
 BUILD_ASSERT(ARRAY_SIZE(cmd_names) == (size_t)CMD_KIND_COUNT,
@@ -47,12 +48,12 @@ int cmd_post(enum cmd_kind kind, int16_t track)
 		return -EINVAL;
 	}
 
-	if (kind == CMD_SELECT) {
+	if ((kind == CMD_SELECT) || (kind == CMD_CUE)) {
 		if ((track < 0) || (track >= (int16_t)LIBRARY_MAX)) {
 			return -EINVAL;
 		}
 	} else {
-		/* Normaliza: só ::CMD_SELECT carrega faixa. Deixar lixo aqui
+		/* Normaliza: só ::CMD_SELECT e ::CMD_CUE carregam faixa. Deixar lixo aqui
 		 * convidaria o consumidor a olhar o campo no comando errado.
 		 */
 		track = TRACK_NONE;

@@ -7,6 +7,8 @@
  *    observador que varre de novo a cada troca de cartão.
  * 3. A interface, que mostra a biblioteca.
  * 4. A reprodução: loader, saída de tom e player.
+ * 5. As extensões da E7: a última faixa lembrada (RF10) e os LEDs de estado
+ *    (RF11). O avanço automático (RF09) é do próprio player.
  *
  * Depois disso o `main` só pisca o LED: o trabalho está nas threads de cada
  * módulo.
@@ -16,8 +18,17 @@
  */
 
 #include <vitrolinha/card.h>
+#include <vitrolinha/cmd.h>
 #include <vitrolinha/display.h>
 #include <vitrolinha/library.h>
+
+#if defined(CONFIG_VITROLINHA_LAST_TRACK)
+#include <vitrolinha/last_track.h>
+#endif
+
+#if defined(CONFIG_VITROLINHA_STATUS_LED)
+#include <vitrolinha/status_led.h>
+#endif
 
 #include <app_version.h>
 
@@ -98,6 +109,27 @@ static int heartbeat_init(void)
 }
 
 /**
+ * @brief Devolve a última faixa lembrada, uma vez por boot (RF10).
+ *
+ * Vale na primeira biblioteca pronta: no boot, se o cartão já leu, ou na
+ * primeira inserção depois dele. O player recebe a faixa por ::CMD_CUE, que
+ * ele só aceita enquanto não tem faixa nenhuma, e a tela põe o destaque
+ * nela. Nada toca: tocar/pausar é que a toca.
+ */
+static void restore_last_track(void)
+{
+#if defined(CONFIG_VITROLINHA_LAST_TRACK)
+	int track = last_track_restore();
+
+	if (track >= 0) {
+		LOG_INF("Ultima faixa restaurada: %d", track);
+		(void)cmd_post(CMD_CUE, (int16_t)track);
+		display_cue(track);
+	}
+#endif
+}
+
+/**
  * @brief Leva toda mudança de estado do cartão à biblioteca.
  *
  * Roda na thread do monitor do cartão, e varre ali mesmo: é a thread que já
@@ -113,6 +145,7 @@ static void card_changed(enum card_state state)
 	ARG_UNUSED(state);
 
 	(void)library_refresh();
+	restore_last_track();
 }
 
 /**
@@ -214,6 +247,23 @@ int main(void)
 
 #if defined(VITROLINHA_HAS_PLAYER)
 	playback_start();
+#endif
+
+#if defined(CONFIG_VITROLINHA_LAST_TRACK)
+	/* Depois do player, que é quem recebe a faixa lembrada. */
+	err = last_track_init();
+	if (err != 0) {
+		LOG_ERR("Settings nao subiu: %d", err);
+	}
+	restore_last_track();
+	last_track_start();
+#endif
+
+#if defined(CONFIG_VITROLINHA_STATUS_LED)
+	err = status_led_init();
+	if (err != 0) {
+		LOG_ERR("LEDs de estado nao subiram: %d", err);
+	}
 #endif
 
 	LOG_INF("Vitrolinha no ar. LED de sinal de vida piscando.");

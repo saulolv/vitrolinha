@@ -120,3 +120,16 @@ endif()
 target_sources_ifdef(CONFIG_BOARD_NATIVE_SIM app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/sim_encoder.c
 )
+
+# A última faixa lembrada (RF10). Só onde o projeto pede e há `settings`:
+# a opção depende de CONFIG_SETTINGS, e os testes que não a enxergam ficam
+# sem o módulo — e sem a thread dele.
+target_sources_ifdef(CONFIG_VITROLINHA_LAST_TRACK app PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}/last_track.c
+)
+
+# Os LEDs de estado (RF11). Só onde há fita no alias `led-strip`: na placa,
+# os WS2812; nos testes, a fita de mentira de tests/status_led/.
+target_sources_ifdef(CONFIG_VITROLINHA_STATUS_LED app PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}/status_led.c
+)
