@@ -95,7 +95,6 @@ ZTEST(storage_host, test_listagem_e_leitura_csv)
 	/* Mudanças de origem e arquivos novos só alteram índices após nova varredura. */
 	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", "/dev/null/ausente", 1));
 	write_file("aaa.csv", csv, sizeof(csv) - 1U);
-	zassert_true(storage_present());
 	memset(buffer, 0xa5, sizeof(buffer));
 	zassert_equal(sizeof(csv) - 1U, storage_load(1, buffer, sizeof(buffer)));
 	zassert_mem_equal(csv, buffer, sizeof(csv) - 1U);
@@ -187,7 +186,6 @@ ZTEST(storage_host, test_pasta_vazia_e_ausente)
 	uint8_t buffer[sizeof(csv)];
 	char missing[sizeof(directory) + 16U];
 
-	zassert_true(storage_present());
 	zassert_equal(0, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
 	write_file("teste.csv", csv, sizeof(csv) - 1U);
 	zassert_equal(1, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
@@ -197,7 +195,6 @@ ZTEST(storage_host, test_pasta_vazia_e_ausente)
 	snprintf(missing, sizeof(missing), "%s/ausente", directory);
 	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", missing, 1));
 	zassert_equal(-ENODEV, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
-	zassert_false(storage_present());
 	zassert_equal(-ENOENT, storage_load(0, buffer, sizeof(buffer)));
 }
 
@@ -238,15 +235,12 @@ ZTEST(storage_host, test_origem_inutilizavel)
 {
 	static char path[PATH_MAX + 8U];
 
-	/* Caminho que não cabe: recusado antes de abrir qualquer coisa, e sem
-	 * pasta guardada a presença volta a consultar a origem configurada.
-	 */
+	/* Caminho que não cabe: recusado antes de abrir qualquer coisa. */
 	memset(path, 'a', sizeof(path) - 1U);
 	path[0] = '/';
 	path[sizeof(path) - 1U] = '\0';
 	zassert_ok(setenv("VITROLINHA_MUSIC_DIR", path, 1));
 	zassert_equal(-EIO, storage_scan(tracks, ARRAY_SIZE(tracks), NULL));
-	zassert_false(storage_present());
 
 	/* Um arquivo no lugar da pasta é ausência, não falha de E/S. */
 	write_file("arquivo.csv", csv, sizeof(csv) - 1U);

@@ -188,8 +188,3 @@ int storage_load(int track, uint8_t *buf, size_t len)
 
 	return (int)size;
 }
-
-bool storage_present(void)
-{
-	return fake_present;
-}

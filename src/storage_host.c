@@ -224,15 +224,3 @@ done:
 	close(fd);
 	return result;
 }
-
-/** @brief A pasta acessível, mesmo vazia, representa presença neste alvo. */
-bool storage_present(void)
-{
-	DIR *dir = opendir(directory[0] != '\0' ? directory : configured_directory());
-
-	if (dir == NULL) {
-		return false;
-	}
-	closedir(dir);
-	return true;
-}

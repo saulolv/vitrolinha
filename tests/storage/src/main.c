@@ -36,26 +36,34 @@ ZTEST_SUITE(storage, NULL, NULL, storage_before, NULL, NULL);
 
 ZTEST(storage, test_cartao_presente_por_padrao)
 {
-	zassert_true(storage_present());
+	struct track_meta library[LIBRARY_MAX];
+
+	zassert_equal((int)STORAGE_FAKE_TRACK_COUNT,
+		      storage_scan(library, ARRAY_SIZE(library), NULL));
 }
 
 ZTEST(storage, test_ausencia_de_cartao_e_visivel)
 {
+	struct track_meta library[LIBRARY_MAX];
+
 	storage_fake_set_present(false);
-	zassert_false(storage_present());
+	zassert_equal(-ENODEV, storage_scan(library, ARRAY_SIZE(library), NULL));
 
 	storage_fake_set_present(true);
-	zassert_true(storage_present());
+	zassert_equal((int)STORAGE_FAKE_TRACK_COUNT,
+		      storage_scan(library, ARRAY_SIZE(library), NULL));
 }
 
 ZTEST(storage, test_cartao_mudo_continua_presente)
 {
+	struct track_meta library[LIBRARY_MAX];
+
 	/* Distinção que importa para a tela: "sem cartao" e "cartao ilegivel"
 	 * pedem mensagens diferentes.
 	 */
 	storage_fake_set_failing(true);
 
-	zassert_true(storage_present());
+	zassert_equal(-EIO, storage_scan(library, ARRAY_SIZE(library), NULL));
 }
 
 /* -------------------------------------------------------------------------

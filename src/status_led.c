@@ -3,6 +3,7 @@
  * @brief Implementação de @ref status_led.h.
  */
 #include <vitrolinha/status_led.h>
+#include <vitrolinha/status_led_test.h>
 
 #include <errno.h>
 

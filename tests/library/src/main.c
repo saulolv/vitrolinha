@@ -12,6 +12,7 @@
  */
 
 #include <vitrolinha/library.h>
+#include <vitrolinha/library_test.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/storage_fake.h>
 #include <vitrolinha/track.h>

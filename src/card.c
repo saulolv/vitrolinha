@@ -17,6 +17,7 @@
  */
 
 #include <vitrolinha/card.h>
+#include <vitrolinha/card_test.h>
 
 #include <zephyr/fs/fs.h>
 #include <zephyr/kernel.h>
@@ -345,11 +346,6 @@ int card_init(void)
 enum card_state card_get_state(void)
 {
 	return (enum card_state)atomic_get(&card_state_now);
-}
-
-bool card_ready(void)
-{
-	return card_get_state() == CARD_READY;
 }
 
 int card_acquire(void)

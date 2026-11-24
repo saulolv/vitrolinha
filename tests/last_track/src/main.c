@@ -12,7 +12,9 @@
  */
 #define _POSIX_C_SOURCE 200809L
 #include <vitrolinha/last_track.h>
+#include <vitrolinha/last_track_test.h>
 #include <vitrolinha/library.h>
+#include <vitrolinha/library_test.h>
 #include <vitrolinha/snapshot.h>
 
 #include <errno.h>

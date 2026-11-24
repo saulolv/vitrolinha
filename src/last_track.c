@@ -7,6 +7,7 @@
  * dividem. Nenhuma das duas é o `player`.
  */
 #include <vitrolinha/last_track.h>
+#include <vitrolinha/last_track_test.h>
 #include <vitrolinha/library.h>
 #include <vitrolinha/snapshot.h>
 #include <vitrolinha/track.h>

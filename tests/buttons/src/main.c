@@ -7,6 +7,7 @@
  */
 
 #include <vitrolinha/cmd.h>
+#include <vitrolinha/cmd_test.h>
 #include <vitrolinha/display.h>
 #include <vitrolinha/track.h>
 
@@ -28,9 +29,8 @@ static void expect_cmd(enum cmd_kind kind)
 {
 	struct cmd got;
 
-	zassert_ok(cmd_get(&got, K_NO_WAIT), "fila vazia, esperava %s", cmd_kind_name(kind));
-	zassert_equal((uint8_t)kind, got.kind, "veio %s, esperava %s",
-		      cmd_kind_name((enum cmd_kind)got.kind), cmd_kind_name(kind));
+	zassert_ok(cmd_get(&got, K_NO_WAIT), "fila vazia, esperava o comando %d", kind);
+	zassert_equal((uint8_t)kind, got.kind, "veio o comando %d, esperava %d", got.kind, kind);
 	zassert_equal(TRACK_NONE, got.track);
 }
 

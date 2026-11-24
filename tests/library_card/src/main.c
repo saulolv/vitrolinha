@@ -18,6 +18,7 @@
 
 #include <vitrolinha/card.h>
 #include <vitrolinha/library.h>
+#include <vitrolinha/library_test.h>
 #include <vitrolinha/storage.h>
 #include <vitrolinha/track.h>
 

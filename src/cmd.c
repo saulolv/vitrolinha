@@ -4,6 +4,7 @@
  */
 
 #include <vitrolinha/cmd.h>
+#include <vitrolinha/cmd_test.h>
 
 #include <errno.h>
 
@@ -20,25 +21,6 @@
  * blocos e exige o alinhamento natural do tipo.
  */
 K_MSGQ_DEFINE(cmd_queue, sizeof(struct cmd), CMD_QUEUE_DEPTH, 4);
-
-/**
- * @brief Nomes dos comandos, na ordem de @ref cmd_kind.
- *
- * Tabela em vez de `switch` para que acrescentar um comando sem lhe dar nome
- * quebre a verificação estática abaixo, em vez de passar batido e virar "?"
- * no log.
- */
-static const char *const cmd_names[] = {
-	[CMD_PLAY_PAUSE] = "PLAY_PAUSE",
-	[CMD_NEXT] = "NEXT",
-	[CMD_PREV] = "PREV",
-	[CMD_SELECT] = "SELECT",
-	[CMD_STOP] = "STOP",
-	[CMD_CUE] = "CUE",
-};
-
-BUILD_ASSERT(ARRAY_SIZE(cmd_names) == (size_t)CMD_KIND_COUNT,
-	     "cmd_names está fora de sincronia com enum cmd_kind");
 
 int cmd_post(enum cmd_kind kind, int16_t track)
 {
@@ -88,13 +70,4 @@ void cmd_poll_event_init(struct k_poll_event *event)
 void cmd_flush(void)
 {
 	k_msgq_purge(&cmd_queue);
-}
-
-const char *cmd_kind_name(enum cmd_kind kind)
-{
-	if ((kind < CMD_PLAY_PAUSE) || (kind >= CMD_KIND_COUNT)) {
-		return "?";
-	}
-
-	return cmd_names[kind];
 }

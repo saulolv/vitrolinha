@@ -114,17 +114,6 @@ int parser_rtttl_next(struct parser_rtttl *parser, struct playback_event *out);
  */
 int parser_rtttl_rewind(struct parser_rtttl *parser);
 
-/**
- * @brief Frequência de uma nota, em Hz arredondados.
- *
- * Temperamento igual com Lá 4 em 440 Hz. Exposta para os testes e para quem
- * precisar da mesma afinação.
- *
- * @param pitch Semitons a partir do Dó 0: `oitava * 12 + nota`, com Dó = 0.
- * @return A frequência, ou 0 para @p pitch acima da oitava 11.
- */
-uint32_t parser_rtttl_frequency(unsigned int pitch);
-
 #ifdef __cplusplus
 }
 #endif

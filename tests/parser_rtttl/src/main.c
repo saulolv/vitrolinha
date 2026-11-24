@@ -9,6 +9,7 @@
 
 #include <vitrolinha/parser.h>
 #include <vitrolinha/parser_rtttl.h>
+#include <vitrolinha/parser_rtttl_test.h>
 #include <vitrolinha/tone.h>
 
 #include <errno.h>

@@ -9,6 +9,7 @@
  */
 
 #include <vitrolinha/cmd.h>
+#include <vitrolinha/cmd_test.h>
 #include <vitrolinha/track.h>
 
 #include <errno.h>
@@ -177,31 +178,4 @@ ZTEST(cmd, test_descarte_esvazia)
 
 	zassert_equal(-ENOMSG, cmd_get(&got, K_NO_WAIT),
 		      "comandos anteriores a uma troca de faixa nao podem sobreviver");
-}
-
-/* -------------------------------------------------------------------------
- * Nomes
- * ------------------------------------------------------------------------- */
-
-ZTEST(cmd, test_todo_comando_tem_nome)
-{
-	static const char *const esperado[] = {
-		[CMD_PLAY_PAUSE] = "PLAY_PAUSE",
-		[CMD_NEXT] = "NEXT",
-		[CMD_PREV] = "PREV",
-		[CMD_SELECT] = "SELECT",
-		[CMD_STOP] = "STOP",
-		[CMD_CUE] = "CUE",
-	};
-
-	for (int i = 0; i < (int)CMD_KIND_COUNT; i++) {
-		zassert_str_equal(esperado[i], cmd_kind_name((enum cmd_kind)i),
-				  "nome errado para o comando %d", i);
-	}
-}
-
-ZTEST(cmd, test_nome_de_comando_invalido)
-{
-	zassert_str_equal("?", cmd_kind_name(CMD_KIND_COUNT));
-	zassert_str_equal("?", cmd_kind_name((enum cmd_kind)-1));
 }
