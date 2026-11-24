@@ -58,9 +58,8 @@
 	/*
 	 * Botões de transporte.
 	 *
-	 * A ordem aqui é a lógica, BTN_0 a BTN_3. Qual botão físico da placa
-	 * corresponde a qual continua sendo pergunta da bancada (issue #27):
-	 * o P2 não tem serigrafia e a ordem física não segue a numérica.
+	 * A ordem é a da placa, da esquerda para a direita: as teclas 1 a 4 são
+	 * os botões 1 a 4 — anterior, tocar/pausar, seguinte e alternar telas.
 	 */
 	buttons {
 		compatible = "gpio-keys";
