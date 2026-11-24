@@ -197,6 +197,7 @@ na primeira seção do relatório, de propósito.
 | [`docs/especificacao-vitrolinha.md`](docs/especificacao-vitrolinha.md) | Especificação v3: requisitos, arquitetura, métricas, plano de entregas |
 | [`CLAUDE.md`](CLAUDE.md) | Plano de trabalho: pinos verificados, Kconfig, overlay, armadilhas, restrições de código |
 | [`CONTEXT.md`](CONTEXT.md) | Glossário do domínio. O mesmo termo com o mesmo sentido em código, issues e relatório |
+| [`docs/maquinas-de-estado.md`](docs/maquinas-de-estado.md) | As três máquinas de estado — reprodução, biblioteca e navegação — com cada transição |
 | [`docs/adr/`](docs/adr/) | Decisões de arquitetura, com as alternativas rejeitadas |
 | [`docs/medicoes/`](docs/medicoes/) | Resultado de cada bancada: o que foi medido, o que foi modelado, e o que se decidiu |
 
